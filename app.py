@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import re
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -71,8 +72,18 @@ if uploaded_file is not None:
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_column = potential_cols[0] if potential_cols else df.columns[0]
 
-    # กรองเฉพาะแถวที่มีหมายเลขครุภัณฑ์จริงๆ (ตัดแถวว่างหรือไม่มีรหัสออก)
-    df = df[df[target_column].notna() & (df[target_column].astype(str).str.strip() != '') & (df[target_column].astype(str).str.lower() != 'nan')].reset_index(drop=True)
+    # --- ฟังก์ชันกรอง: ต้องมีตัวเลขอย่างน้อย 1 ตัว และอนุญาตให้มีอักษร เครื่องหมาย - / ได้ ---
+    def is_valid_asset_code(val):
+        if pd.isna(val):
+            return False
+        val_str = str(val).strip()
+        if val_str == '' or val_str.lower() == 'nan':
+            return False
+        # ตรวจสอบว่ามีตัวเลข (0-9) อยู่ในข้อความนั้นจริงๆ ถึงจะนับเป็นหมายเลขครุภัณฑ์
+        return bool(re.search(r'\d', val_str))
+
+    # กรองตารางเฉพาะแถวที่หมายเลขครุภัณฑ์ถูกต้องตามเงื่อนไข
+    df = df[df[target_column].apply(is_valid_asset_code)].reset_index(drop=True)
     
     audit_columns = ['สถานะการตรวจ', 'ผู้ตรวจ', 'วันเวลาที่ตรวจ']
     for col in audit_columns:
@@ -84,7 +95,7 @@ if uploaded_file is not None:
 
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
-    # --- 📊 ส่วนสรุปผลภาพรวม (นับจากหมายเลขครุภัณฑ์ที่มีจริง) ---
+    # --- 📊 ส่วนสรุปผลภาพรวม ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
     
     total_items = len(df)
