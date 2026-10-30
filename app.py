@@ -12,40 +12,45 @@ st.set_page_config(
     layout="wide"
 )
 
-# ปรับแต่ง CSS ให้หน้าจอมีความกระชับสวยงาม
+# ปรับแต่ง CSS ให้ดีไซน์กระชับและสมดุลยิ่งขึ้น
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1rem;
         padding-bottom: 2rem;
     }
     h1 {
-        font-size: 1.8rem !important;
+        font-size: 1.7rem !important;
+        margin-bottom: -10px !important;
+    }
+    .stAlert {
+        padding: 4px 12px !important;
         margin-bottom: 0px !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# 4. ย่อหัวข้อให้กระชับขึ้น
-st.setHeader = st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
-st.markdown("<hr style='margin: 10px 0px 15px 0px;'>", unsafe_allow_html=True)
+st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
+st.markdown("<hr style='margin: 8px 0px 12px 0px;'>", unsafe_allow_html=True)
 
-# 1 & 2 & 3. จัดกลุ่มอัปโหลด, สถานะ และปรับช่อง Row index ให้สั้นลง อยู่ในระนาบเดียวกัน
-col_file, col_status, col_row = st.columns([2.5, 1.2, 1.2])
+# จัดสัดส่วนคอลัมน์ให้สมดุล (ช่องอัปโหลด | ช่องสถานะ | ช่อง Row index)
+col_file, col_status, col_row = st.columns([2.2, 1.3, 1.2])
 
 with col_file:
     uploaded_file = st.file_uploader("📁 อัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์", type=["xlsx", "xls", "csv"])
 
 with col_status:
-    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # จัดตำแหน่งความสูงให้ตรงกัน
+    # ดันข้อความสถานะลงมาเล็กน้อยให้อยู่ระดับเดียวกับช่องอัปโหลดไฟล์
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
     if uploaded_file is not None:
-        st.success("✅ โหลดข้อมูลสำเร็จ!")
+        st.success("โหลดข้อมูลสำเร็จ!")
     else:
-        st.info("💡 รออัปโหลดไฟล์")
+        st.info("รออัปโหลดไฟล์...")
 
 with col_row:
-    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    header_row = st.number_input("แถวหัวตาราง (Row index)", min_value=0, value=4, step=1)
+    # นำคำว่า แถวหัวตาราง (Row index) ขึ้นมาขนานกับหัวข้ออัปโหลดด้านซ้ายทันที
+    st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #31333F;'>แถวหัวตาราง (Row index)</div>", unsafe_allow_html=True)
+    header_row = st.number_input("", min_value=0, value=4, step=1, label_visibility="collapsed")
 
 if uploaded_file is not None:
     if uploaded_file.name.endswith('.csv'):
@@ -67,7 +72,6 @@ if uploaded_file is not None:
     df.columns = combined_columns
     df = df.dropna(how='all').reset_index(drop=True)
     
-    # เพิ่มคอลัมน์ตรวจสอบถ้ายังไม่มี
     audit_columns = ['สถานะการตรวจ', 'ผู้ตรวจ', 'วันเวลาที่ตรวจ']
     for col in audit_columns:
         if col not in df.columns:
@@ -76,11 +80,10 @@ if uploaded_file is not None:
             else:
                 df[col] = '-'
 
-    # ค้นหาคอลัมน์หมายเลขครุภัณฑ์
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_column = potential_cols[0] if potential_cols else df.columns[0]
 
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
     # --- 📊 ส่วนสรุปผลภาพรวม (Dashboard Metrics) ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
@@ -106,9 +109,9 @@ if uploaded_file is not None:
     m5.metric("🗑️ จำหน่ายแล้ว", disposed_count)
     m6.metric("🔧 รอซ่อม", repair_count)
 
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🗂️ เมนูหลัก (ย้ายปุ่มสร้าง QR และ ส่งออก มาไว้ด้านบนคู่กันตามขอ) ---
+    # --- 🗂️ เมนูหลักแบบแท็บด้านบน ---
     main_tab1, main_tab2, main_tab3 = st.tabs([
         "🔍 ค้นหา & บันทึกผลการตรวจ", 
         "🏷️ สร้าง QR Code พัสดุ", 
@@ -145,7 +148,7 @@ if uploaded_file is not None:
                 df.loc[df[target_column] == item_target, 'สถานะการตรวจ'] = new_status
                 df.loc[df[target_column] == item_target, 'ผู้ตรวจ'] = inspector_name
                 df.loc[df[target_column] == item_target, 'วันเวลาที่ตรวจ'] = current_time
-                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว! (อย่าลืมไปที่แท็บ 'ส่งออกรายงาน Excel' เพื่อดาวน์โหลดไฟล์เก็บไว้)")
+                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
 
     with main_tab2:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
@@ -197,7 +200,7 @@ if uploaded_file is not None:
         df.to_excel(output_file, index=False)
         with open(output_file, "rb") as f:
             st.download_button(
-                label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด (พร้อมเปอร์เซ็นต์และสถานะใหม่)",
+                label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด",
                 data=f,
                 file_name=f"รายงานผลการตรวจครุภัณฑ์_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
