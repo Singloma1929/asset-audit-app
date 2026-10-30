@@ -4,3 +4,4 @@ openpyxl
 qrcode
 Pillow
 python-calamine
+streamlit-qrcode-scanner
