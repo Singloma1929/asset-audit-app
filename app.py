@@ -196,38 +196,39 @@ if uploaded_file is not None:
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
-            # สร้าง QR Code
+            # สร้าง QR Code 
             qr = qrcode.QRCode(version=1, box_size=12, border=2)
             qr.add_data(str(selected_qr_item))
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
-            padding_bottom = 55  # เว้นพื้นที่ด้านล่างพอดีสำหรับตัวเลขเดี่ยวๆ ขนาดใหญ่
+            padding_bottom = 55  
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
-            # แสดงเฉพาะตัวเลขหมายเลขครุภัณฑ์ล้วนๆ ตัวใหญ่ชัดเจน ป้องกันปัญหาฟอนต์ภาษาไทย
             text_to_print = str(selected_qr_item)
             
-            # ใช้ฟอนต์หลักของระบบขนาดใหญ่สะใจ
+            # โหลดฟอนต์ขนาดใหญ่พิเศษ (ประมาณ 20px) แบบปกติ ไม่ทำตัวหนา
             try:
-                font = ImageFont.load_default()
+                font = ImageFont.truetype("arial.ttf", 20)
             except:
-                font = None
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", 20)
+                except:
+                    font = ImageFont.load_default()
                 
-            # คำนวณตำแหน่งกึ่งกลางภาพ
-            # เนื่องจากฟอนต์ดีฟอลต์ขนาดตายตัว เราใช้การกะระยะพิกเซลตรงกลางสวยงาม
-            # หรือใช้ string length คำนวณคร่าวๆ ให้จัดกลางพอดี
-            approx_char_width = 7
-            text_width = len(text_to_print) * approx_char_width * 2  # คูณสเกลให้สม2
+            # คำนวณความกว้างข้อความเพื่อจัดกึ่งกลางพอดี
+            bbox = draw.textbbox((0, 0), text_to_print, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
             
-            text_x = (qr_width - (len(text_to_print) * 11)) / 2
-            text_y = qr_height + 18
+            text_x = (qr_width - text_width) / 2
+            text_y = qr_height + ((padding_bottom - text_height) / 2) - 2
             
-            # วาดข้อความตัวเลขเน้นๆ ขนาดใหญ่
-            draw.text((text_x, text_y), text_to_print, fill="black", font=font, spacing=0, stroke_width=1)
+            # วาดตัวเลขขนาดใหญ่ ฟอนต์ปกติ (ไม่มี stroke_width เพื่อไม่ให้หนา)
+            draw.text((text_x, text_y), text_to_print, fill="black", font=font)
             
             buf = BytesIO()
             new_img.save(buf, format="PNG")
