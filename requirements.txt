@@ -1,0 +1,6 @@
+streamlit
+pandas
+openpyxl
+qrcode
+Pillow
+python-calamine
