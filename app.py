@@ -12,26 +12,46 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
-st.write("---")
+# ปรับแต่ง CSS ให้หน้าจอมีความกระชับสวยงาม
+st.markdown("""
+    <style>
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }
+    h1 {
+        font-size: 1.8rem !important;
+        margin-bottom: 0px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- ส่วนอัปโหลดไฟล์ด้านบนสุด ---
-col_up1, col_up2 = st.columns([2, 1])
-with col_up1:
+# 4. ย่อหัวข้อให้กระชับขึ้น
+st.setHeader = st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
+st.markdown("<hr style='margin: 10px 0px 15px 0px;'>", unsafe_allow_html=True)
+
+# 1 & 2 & 3. จัดกลุ่มอัปโหลด, สถานะ และปรับช่อง Row index ให้สั้นลง อยู่ในระนาบเดียวกัน
+col_file, col_status, col_row = st.columns([2.5, 1.2, 1.2])
+
+with col_file:
     uploaded_file = st.file_uploader("📁 อัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์", type=["xlsx", "xls", "csv"])
-with col_up2:
+
+with col_status:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # จัดตำแหน่งความสูงให้ตรงกัน
     if uploaded_file is not None:
-        st.success("โหลดข้อมูลสำเร็จ!")
+        st.success("✅ โหลดข้อมูลสำเร็จ!")
     else:
-        st.info("💡 โปรดอัปโหลดไฟล์เพื่อเริ่มใช้งาน")
+        st.info("💡 รออัปโหลดไฟล์")
+
+with col_row:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    header_row = st.number_input("แถวหัวตาราง (Row index)", min_value=0, value=4, step=1)
 
 if uploaded_file is not None:
     if uploaded_file.name.endswith('.csv'):
         raw_df = pd.read_csv(uploaded_file, header=None)
     else:
         raw_df = pd.read_excel(uploaded_file, header=None)
-    
-    header_row = st.number_input("ระบุบรรทัดหัวตาราง (Row index)", min_value=0, max_value=len(raw_df)-1, value=4, step=1)
     
     top_cols = raw_df.iloc[header_row].fillna('').astype(str)
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
@@ -60,7 +80,7 @@ if uploaded_file is not None:
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_column = potential_cols[0] if potential_cols else df.columns[0]
 
-    st.write("---")
+    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
     # --- 📊 ส่วนสรุปผลภาพรวม (Dashboard Metrics) ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
@@ -86,9 +106,9 @@ if uploaded_file is not None:
     m5.metric("🗑️ จำหน่ายแล้ว", disposed_count)
     m6.metric("🔧 รอซ่อม", repair_count)
 
-    st.write("---")
+    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🗂️ เมนูหลักแบบแท็บด้านบน ชัดเจน ไม่โดนพับซ่อน ---
+    # --- 🗂️ เมนูหลัก (ย้ายปุ่มสร้าง QR และ ส่งออก มาไว้ด้านบนคู่กันตามขอ) ---
     main_tab1, main_tab2, main_tab3 = st.tabs([
         "🔍 ค้นหา & บันทึกผลการตรวจ", 
         "🏷️ สร้าง QR Code พัสดุ", 
@@ -128,7 +148,7 @@ if uploaded_file is not None:
                 st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว! (อย่าลืมไปที่แท็บ 'ส่งออกรายงาน Excel' เพื่อดาวน์โหลดไฟล์เก็บไว้)")
 
     with main_tab2:
-        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ (ชิดขอบล่าง ประหยัดพื้นที่)")
+        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
