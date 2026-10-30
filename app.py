@@ -192,47 +192,41 @@ if uploaded_file is not None:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
 
     with main_tab3:
-        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ (ขยายตัวหนังสือให้ใหญ่เต็มกรอบ)")
+        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
-            # สร้าง QR Code 
+            # สร้าง QR Code
             qr = qrcode.QRCode(version=1, box_size=10, border=2)
             qr.add_data(str(selected_qr_item))
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
-            padding_bottom = 45  # ขยายพื้นที่ด้านล่างเพิ่มขึ้นเพื่อให้ตัวหนังสือใหญ่ขึ้นได้
+            padding_bottom = 50  # เพิ่มพื้นที่ด้านล่างให้รองรับตัวหนังสือที่ใหญ่ขึ้น
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
-            text_to_print = f"No: {selected_qr_item}"
+            # เปลี่ยนคำนำหน้าเป็นภาษาไทย ชัดเจน ไม่มีปัญหาเรื่องฟอนต์เพี้ยน
+            text_to_print = f"เลขครุภัณฑ์: {selected_qr_item}"
             
-            # บังคับขนาดฟอนต์ให้ใหญ่และชัดเจนขึ้นพอดีกับความกว้างของ QR Code
-            font_size = 20
+            # โหลดฟอนต์มาตรฐานระบบ หรือใช้ฟอนต์ตัวหนาขนาดใหญ่ขึ้น
             try:
-                font = ImageFont.truetype("arial.ttf", font_size)
+                # พยายามดึงฟอนต์ระบบที่มีขนาดใหญ่ชัดเจน
+                font = ImageFont.truetype("DejaVuSans.ttf", 16)
             except:
-                font = ImageFont.load_default()
+                try:
+                    font = ImageFont.truetype("arial.ttf", 16)
+                except:
+                    font = ImageFont.load_default()
                 
             # วัดขนาดข้อความเพื่อจัดกึ่งกลาง
             bbox = draw.textbbox((0, 0), text_to_print, font=font)
             text_width = bbox[2] - bbox[0]
             
-            # ถ้าตัวหนังสือยาวเกินกว่ากรอบ ให้ปรับลดขนาดลงเล็กน้อยอัตโนมัติเพื่อให้ลงตัวพอดี
-            if text_width > (qr_width - 10):
-                font_size = int(18 * (qr_width / text_width))
-                try:
-                    font = ImageFont.truetype("arial.ttf", font_size)
-                except:
-                    pass
-                bbox = draw.textbbox((0, 0), text_to_print, font=font)
-                text_width = bbox[2] - bbox[0]
-
             text_x = (qr_width - text_width) / 2
-            text_y = qr_height + ((padding_bottom - (bbox[3] - bbox[1])) / 2) - 4
+            text_y = qr_height + ((padding_bottom - (bbox[3] - bbox[1])) / 2) - 2
             
             draw.text((text_x, text_y), text_to_print, fill="black", font=font)
             
@@ -240,7 +234,7 @@ if uploaded_file is not None:
             new_img.save(buf, format="PNG")
             byte_im = buf.getvalue()
             
-            st.image(byte_im, caption=f"ป้าย QR Code: {selected_qr_item}", width=240)
+            st.image(byte_im, caption=f"ป้าย QR Code: {selected_qr_item}", width=250)
             st.download_button(
                 label=f"📥 ดาวน์โหลดรูปป้าย QR Code ({selected_qr_item})",
                 data=byte_im,
