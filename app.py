@@ -192,32 +192,38 @@ if uploaded_file is not None:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
 
     with main_tab3:
-        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
+        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ (ปรับขนาดพอดีกรอบ)")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
+            # สร้าง QR Code แบบตั้งค่า box_size และ border ให้สัดส่วนสวยงาม
             qr = qrcode.QRCode(version=1, box_size=10, border=2)
             qr.add_data(str(selected_qr_item))
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
-            padding_bottom = 30
+            padding_bottom = 35  # เพิ่มพื้นที่ด้านล่างพอดีสำหรับวางตัวหนังสือ
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
             text_to_print = f"No: {selected_qr_item}"
             
+            # คำนวณขนาดฟอนต์ให้อัตโนมัติ เพื่อให้ข้อความยาวพอดีกับความกว้างของ QR Code
+            font_size = 14
             try:
-                font = ImageFont.truetype("arial.ttf", 18)
+                # ลองปรับลด/เพิ่มขนาดฟอนต์ตามความยาวข้อความเพื่อให้กว้างพอดีกรอบ
+                font_size = max(10, int(qr_width / (len(text_to_print) * 0.65)))
+                font = ImageFont.truetype("arial.ttf", font_size)
             except:
                 font = ImageFont.load_default()
                 
+            # วัดขนาดข้อความเพื่อจัดให้อยู่กึ่งกลางพอดีแนวนอน
             bbox = draw.textbbox((0, 0), text_to_print, font=font)
             text_width = bbox[2] - bbox[0]
             text_x = (qr_width - text_width) / 2
-            text_y = qr_height - 2 
+            text_y = qr_height + ((padding_bottom - (bbox[3] - bbox[1])) / 2) - 2
             
             draw.text((text_x, text_y), text_to_print, fill="black", font=font)
             
