@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ปรับแต่ง CSS เฉพาะส่วนความกระชับโดยไม่บีบตัวหนังสือหลัก
+# ปรับแต่ง CSS ให้ดีไซน์กระชับและสมดุล
 st.markdown("""
     <style>
     .block-container {
@@ -26,18 +26,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# หัวข้อหลักขนาดพอดี สมบูรณ์สวยงาม ไม่เล็กเกินไป
+# หัวข้อหลักขนาดพอดี สมบูรณ์สวยงาม
 st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
 st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
-# จัดสัดส่วนคอลัมน์ (ช่องอัปโหลด | ช่องสถานะ | ช่อง Row index) อยู่ในระนาบเดียวกัน
+# จัดสัดส่วนคอลัมน์อัปโหลด
 col_file, col_status, col_row = st.columns([2.2, 1.3, 1.2])
 
 with col_file:
     uploaded_file = st.file_uploader("📁 อัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์", type=["xlsx", "xls", "csv"])
 
 with col_status:
-    # ดันข้อความสถานะลงมาเล็กน้อยให้อยู่ระดับเดียวกับช่องอัปโหลดไฟล์
     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
     if uploaded_file is not None:
         st.success("โหลดข้อมูลสำเร็จ!")
@@ -45,7 +44,6 @@ with col_status:
         st.info("รออัปโหลดไฟล์...")
 
 with col_row:
-    # ป้ายหัวตารางขนานกับช่องอัปโหลดด้านซ้าย
     st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #31333F;'>แถวหัวตาราง (Row index)</div>", unsafe_allow_html=True)
     header_row = st.number_input("", min_value=0, value=4, step=1, label_visibility="collapsed")
 
@@ -68,6 +66,13 @@ if uploaded_file is not None:
     df = raw_df.iloc[header_row + 2:].copy()
     df.columns = combined_columns
     df = df.dropna(how='all').reset_index(drop=True)
+
+    # ค้นหาคอลัมน์หมายเลขครุภัณฑ์
+    potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
+    target_column = potential_cols[0] if potential_cols else df.columns[0]
+
+    # กรองเฉพาะแถวที่มีหมายเลขครุภัณฑ์จริงๆ (ตัดแถวว่างหรือไม่มีรหัสออก)
+    df = df[df[target_column].notna() & (df[target_column].astype(str).str.strip() != '') & (df[target_column].astype(str).str.lower() != 'nan')].reset_index(drop=True)
     
     audit_columns = ['สถานะการตรวจ', 'ผู้ตรวจ', 'วันเวลาที่ตรวจ']
     for col in audit_columns:
@@ -77,12 +82,9 @@ if uploaded_file is not None:
             else:
                 df[col] = '-'
 
-    potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
-    target_column = potential_cols[0] if potential_cols else df.columns[0]
-
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
-    # --- 📊 ส่วนสรุปผลภาพรวม (Dashboard Metrics) ---
+    # --- 📊 ส่วนสรุปผลภาพรวม (นับจากหมายเลขครุภัณฑ์ที่มีจริง) ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
     
     total_items = len(df)
