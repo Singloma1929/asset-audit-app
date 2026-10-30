@@ -203,14 +203,14 @@ if uploaded_file is not None:
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
-            padding_bottom = 55  
+            padding_bottom = 28  # ลดพื้นที่ว่างด้านล่างลงเพื่อให้ตัวเลขขยับขึ้นไปชิด QR Code มากขึ้น
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
             text_to_print = str(selected_qr_item)
             
-            # โหลดฟอนต์ขนาดใหญ่พิเศษ (ประมาณ 20px) แบบปกติ ไม่ทำตัวหนา
+            # โหลดฟอนต์ขนาด 20px แบบปกติ
             try:
                 font = ImageFont.truetype("arial.ttf", 20)
             except:
@@ -219,15 +219,14 @@ if uploaded_file is not None:
                 except:
                     font = ImageFont.load_default()
                 
-            # คำนวณความกว้างข้อความเพื่อจัดกึ่งกลางพอดี
+            # คำนวณความกว้างข้อความเพื่อจัดกึ่งกลาง
             bbox = draw.textbbox((0, 0), text_to_print, font=font)
             text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
             
             text_x = (qr_width - text_width) / 2
-            text_y = qr_height + ((padding_bottom - text_height) / 2) - 2
+            text_y = qr_height - 1  # ดึงตำแหน่งให้อยู่ติดขอบล่างของ QR Code พอดี
             
-            # วาดตัวเลขขนาดใหญ่ ฟอนต์ปกติ (ไม่มี stroke_width เพื่อไม่ให้หนา)
+            # วาดตัวเลขชิดติด QR Code
             draw.text((text_x, text_y), text_to_print, fill="black", font=font)
             
             buf = BytesIO()
