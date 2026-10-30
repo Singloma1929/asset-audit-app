@@ -197,44 +197,43 @@ if uploaded_file is not None:
         
         if selected_qr_item:
             # สร้าง QR Code
-            qr = qrcode.QRCode(version=1, box_size=10, border=2)
+            qr = qrcode.QRCode(version=1, box_size=12, border=2)
             qr.add_data(str(selected_qr_item))
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
-            padding_bottom = 50  # เพิ่มพื้นที่ด้านล่างให้รองรับตัวหนังสือที่ใหญ่ขึ้น
+            padding_bottom = 55  # เว้นพื้นที่ด้านล่างพอดีสำหรับตัวเลขเดี่ยวๆ ขนาดใหญ่
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
-            # เปลี่ยนคำนำหน้าเป็นภาษาไทย ชัดเจน ไม่มีปัญหาเรื่องฟอนต์เพี้ยน
-            text_to_print = f"เลขครุภัณฑ์: {selected_qr_item}"
+            # แสดงเฉพาะตัวเลขหมายเลขครุภัณฑ์ล้วนๆ ตัวใหญ่ชัดเจน ป้องกันปัญหาฟอนต์ภาษาไทย
+            text_to_print = str(selected_qr_item)
             
-            # โหลดฟอนต์มาตรฐานระบบ หรือใช้ฟอนต์ตัวหนาขนาดใหญ่ขึ้น
+            # ใช้ฟอนต์หลักของระบบขนาดใหญ่สะใจ
             try:
-                # พยายามดึงฟอนต์ระบบที่มีขนาดใหญ่ชัดเจน
-                font = ImageFont.truetype("DejaVuSans.ttf", 16)
+                font = ImageFont.load_default()
             except:
-                try:
-                    font = ImageFont.truetype("arial.ttf", 16)
-                except:
-                    font = ImageFont.load_default()
+                font = None
                 
-            # วัดขนาดข้อความเพื่อจัดกึ่งกลาง
-            bbox = draw.textbbox((0, 0), text_to_print, font=font)
-            text_width = bbox[2] - bbox[0]
+            # คำนวณตำแหน่งกึ่งกลางภาพ
+            # เนื่องจากฟอนต์ดีฟอลต์ขนาดตายตัว เราใช้การกะระยะพิกเซลตรงกลางสวยงาม
+            # หรือใช้ string length คำนวณคร่าวๆ ให้จัดกลางพอดี
+            approx_char_width = 7
+            text_width = len(text_to_print) * approx_char_width * 2  # คูณสเกลให้สม2
             
-            text_x = (qr_width - text_width) / 2
-            text_y = qr_height + ((padding_bottom - (bbox[3] - bbox[1])) / 2) - 2
+            text_x = (qr_width - (len(text_to_print) * 11)) / 2
+            text_y = qr_height + 18
             
-            draw.text((text_x, text_y), text_to_print, fill="black", font=font)
+            # วาดข้อความตัวเลขเน้นๆ ขนาดใหญ่
+            draw.text((text_x, text_y), text_to_print, fill="black", font=font, spacing=0, stroke_width=1)
             
             buf = BytesIO()
             new_img.save(buf, format="PNG")
             byte_im = buf.getvalue()
             
-            st.image(byte_im, caption=f"ป้าย QR Code: {selected_qr_item}", width=250)
+            st.image(byte_im, caption=f"ป้าย QR Code: {selected_qr_item}", width=260)
             st.download_button(
                 label=f"📥 ดาวน์โหลดรูปป้าย QR Code ({selected_qr_item})",
                 data=byte_im,
