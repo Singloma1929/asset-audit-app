@@ -12,16 +12,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# ปรับแต่ง CSS ให้ดีไซน์กระชับและสมดุลยิ่งขึ้น
+# ปรับแต่ง CSS เฉพาะส่วนความกระชับโดยไม่บีบตัวหนังสือหลัก
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 1rem;
+        padding-top: 1.2rem;
         padding-bottom: 2rem;
-    }
-    h1 {
-        font-size: 1.7rem !important;
-        margin-bottom: -10px !important;
     }
     .stAlert {
         padding: 4px 12px !important;
@@ -30,10 +26,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# หัวข้อหลักขนาดพอดี สมบูรณ์สวยงาม ไม่เล็กเกินไป
 st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
-st.markdown("<hr style='margin: 8px 0px 12px 0px;'>", unsafe_allow_html=True)
+st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
-# จัดสัดส่วนคอลัมน์ให้สมดุล (ช่องอัปโหลด | ช่องสถานะ | ช่อง Row index)
+# จัดสัดส่วนคอลัมน์ (ช่องอัปโหลด | ช่องสถานะ | ช่อง Row index) อยู่ในระนาบเดียวกัน
 col_file, col_status, col_row = st.columns([2.2, 1.3, 1.2])
 
 with col_file:
@@ -48,7 +45,7 @@ with col_status:
         st.info("รออัปโหลดไฟล์...")
 
 with col_row:
-    # นำคำว่า แถวหัวตาราง (Row index) ขึ้นมาขนานกับหัวข้ออัปโหลดด้านซ้ายทันที
+    # ป้ายหัวตารางขนานกับช่องอัปโหลดด้านซ้าย
     st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #31333F;'>แถวหัวตาราง (Row index)</div>", unsafe_allow_html=True)
     header_row = st.number_input("", min_value=0, value=4, step=1, label_visibility="collapsed")
 
@@ -83,7 +80,7 @@ if uploaded_file is not None:
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_column = potential_cols[0] if potential_cols else df.columns[0]
 
-    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
     # --- 📊 ส่วนสรุปผลภาพรวม (Dashboard Metrics) ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
@@ -109,7 +106,7 @@ if uploaded_file is not None:
     m5.metric("🗑️ จำหน่ายแล้ว", disposed_count)
     m6.metric("🔧 รอซ่อม", repair_count)
 
-    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
     # --- 🗂️ เมนูหลักแบบแท็บด้านบน ---
     main_tab1, main_tab2, main_tab3 = st.tabs([
