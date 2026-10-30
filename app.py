@@ -5,6 +5,7 @@ import re
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+from streamlit_qrcode_scanner import streamlit_qrcode_scanner
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
@@ -13,7 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ปรับแต่ง CSS ให้ดีไซน์กระชับและสมดุล
 st.markdown("""
     <style>
     .block-container {
@@ -27,11 +27,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# หัวข้อหลักขนาดพอดี สมบูรณ์สวยงาม
 st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
 st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
-# จัดสัดส่วนคอลัมน์อัปโหลด
+# ส่วนอัปโหลดไฟล์ด้านบน
 col_file, col_status, col_row = st.columns([2.2, 1.3, 1.2])
 
 with col_file:
@@ -68,21 +67,17 @@ if uploaded_file is not None:
     df.columns = combined_columns
     df = df.dropna(how='all').reset_index(drop=True)
 
-    # ค้นหาคอลัมน์หมายเลขครุภัณฑ์
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_column = potential_cols[0] if potential_cols else df.columns[0]
 
-    # --- ฟังก์ชันกรอง: ต้องมีตัวเลขอย่างน้อย 1 ตัว และอนุญาตให้มีอักษร เครื่องหมาย - / ได้ ---
     def is_valid_asset_code(val):
         if pd.isna(val):
             return False
         val_str = str(val).strip()
         if val_str == '' or val_str.lower() == 'nan':
             return False
-        # ตรวจสอบว่ามีตัวเลข (0-9) อยู่ในข้อความนั้นจริงๆ ถึงจะนับเป็นหมายเลขครุภัณฑ์
         return bool(re.search(r'\d', val_str))
 
-    # กรองตารางเฉพาะแถวที่หมายเลขครุภัณฑ์ถูกต้องตามเงื่อนไข
     df = df[df[target_column].apply(is_valid_asset_code)].reset_index(drop=True)
     
     audit_columns = ['สถานะการตรวจ', 'ผู้ตรวจ', 'วันเวลาที่ตรวจ']
@@ -121,10 +116,11 @@ if uploaded_file is not None:
 
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🗂️ เมนูหลักแบบแท็บด้านบน ---
-    main_tab1, main_tab2, main_tab3 = st.tabs([
-        "🔍 ค้นหา & บันทึกผลการตรวจ", 
-        "🏷️ สร้าง QR Code พัสดุ", 
+    # --- 🗂️ เมนูหลัก (เพิ่มแท็บสแกนมือถือ) ---
+    main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
+        "🔍 ค้นหา & บันทึกผล", 
+        "📱 สแกน & ตรวจนับด้วยมือถือ",
+        "🏷️ สร้าง QR Code", 
         "📥 ส่งออกรายงาน Excel"
     ])
 
@@ -161,6 +157,46 @@ if uploaded_file is not None:
                 st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
 
     with main_tab2:
+        st.subheader("📱 เปิดกล้องมือถือสแกน QR Code พัสดุ")
+        st.write("ใช้กล้องมือถือส่องไปที่ QR Code ของครุภัณฑ์เพื่อดึงข้อมูลและบันทึกผลทันที")
+        
+        # เปิดใช้งานกล้องสแกน QR
+        scanned_code = streamlit_qrcode_scanner(key='qr_scanner')
+        
+        if scanned_code:
+            st.success(f"🎯 สแกนสำเร็จ! หมายเลขครุภัณฑ์: **{scanned_code}**")
+            
+            # ค้นหาว่ามีหมายเลขนี้ในระบบไหม
+            matched_row = df[df[target_column].astype(str).str.strip() == str(scanned_code).strip()]
+            
+            if not matched_row.empty:
+                st.info("📋 พบข้อมูลครุภัณฑ์นี้ในระบบ:")
+                st.dataframe(matched_row, use_container_width=True)
+                
+                # ฟอร์มบันทึกผลด่วนสำหรับตัวที่สแกนเจอ
+                with st.form("scan_audit_form"):
+                    st.subheader("📝 บันทึกผลการตรวจ (จากสแกน QR)")
+                    scan_status = st.selectbox("สถานะการตรวจ", [
+                        "ปกติ (ตรวจแล้ว)", 
+                        "ชำรุด", 
+                        "สูญหาย", 
+                        "ต้องการซ่อมแซม", 
+                        "จำหน่ายแล้ว"
+                    ], key="s_status")
+                    scan_inspector = st.text_input("ชื่อผู้ตรวจสอบ / กรรมการ", key="s_insp")
+                    
+                    scan_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้ทันที")
+                    
+                    if scan_submit:
+                        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        df.loc[df[target_column].astype(str).str.strip() == str(scanned_code).strip(), 'สถานะการตรวจ'] = scan_status
+                        df.loc[df[target_column].astype(str).str.strip() == str(scanned_code).strip(), 'ผู้ตรวจ'] = scan_inspector
+                        df.loc[df[target_column].astype(str).str.strip() == str(scanned_code).strip(), 'วันเวลาที่ตรวจ'] = current_time
+                        st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {scanned_code} สำเร็จเรียบร้อย!")
+            else:
+                st.warning(f"⚠️ ไม่พบหมายเลขครุภัณฑ์ '{scanned_code}' ในไฟล์ทะเบียนที่อัปโหลด (โปรดตรวจสอบความถูกต้องของป้าย QR Code)")
+
+    with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
@@ -202,7 +238,7 @@ if uploaded_file is not None:
                 mime="image/png"
             )
 
-    with main_tab3:
+    with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลทั้งหมดที่มีการอัปเดตสถานะ จะถูกรวมอยู่ในไฟล์นี้เพื่อนำไปรายงานผู้บริหารหรือแนบเอกสารราชการครับ")
         
