@@ -5,32 +5,25 @@ import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
-# ตั้งค่าหน้าเว็บให้เป็นแบบ Wide และใช้ Theme โมเดิร์น
+# ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
     page_title="ระบบตรวจพัสดุและครุภัณฑ์ราชการ",
     page_icon="🏛️",
     layout="wide"
 )
 
-# Custom CSS เพิ่มความสวยงามสไตล์โมเดิร์น
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
 st.write("---")
 
-# ส่วนอัปโหลดไฟล์ที่ Sidebar หรือด้านบน
-st.sidebar.header("📁 ตั้งค่าข้อมูลตั้งต้น")
-uploaded_file = st.sidebar.file_uploader("อัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์", type=["xlsx", "xls", "csv"])
+# --- ส่วนอัปโหลดไฟล์ด้านบนสุด ---
+col_up1, col_up2 = st.columns([2, 1])
+with col_up1:
+    uploaded_file = st.file_uploader("📁 อัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์", type=["xlsx", "xls", "csv"])
+with col_up2:
+    if uploaded_file is not None:
+        st.success("โหลดข้อมูลสำเร็จ!")
+    else:
+        st.info("💡 โปรดอัปโหลดไฟล์เพื่อเริ่มใช้งาน")
 
 if uploaded_file is not None:
     if uploaded_file.name.endswith('.csv'):
@@ -38,7 +31,7 @@ if uploaded_file is not None:
     else:
         raw_df = pd.read_excel(uploaded_file, header=None)
     
-    header_row = st.sidebar.number_input("ระบุบรรทัดหัวตาราง (Row index)", min_value=0, max_value=len(raw_df)-1, value=4, step=1)
+    header_row = st.number_input("ระบุบรรทัดหัวตาราง (Row index)", min_value=0, max_value=len(raw_df)-1, value=4, step=1)
     
     top_cols = raw_df.iloc[header_row].fillna('').astype(str)
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
@@ -67,6 +60,8 @@ if uploaded_file is not None:
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_column = potential_cols[0] if potential_cols else df.columns[0]
 
+    st.write("---")
+
     # --- 📊 ส่วนสรุปผลภาพรวม (Dashboard Metrics) ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
     
@@ -80,30 +75,30 @@ if uploaded_file is not None:
     disposed_count = len(df[df['สถานะการตรวจ'] == 'จำหน่ายแล้ว'])
     repair_count = len(df[df['สถานะการตรวจ'] == 'ต้องการซ่อมแซม'])
 
-    # แสดง Progress Bar เปอร์เซ็นต์การตรวจ
     st.write(f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct}%** ({checked_items} จาก {total_items} รายการ)")
     st.progress(progress_pct / 100)
 
-    # แสดงการ์ดตัวเลขสถิติ
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    col1.metric("📦 ทั้งหมด", total_items)
-    col2.metric("✅ ปกติ", normal_count)
-    col3.metric("⚠️ ชำรุด", damaged_count)
-    col4.metric("❌ สูญหาย", lost_count)
-    col5.metric("🗑️ จำหน่ายแล้ว", disposed_count)
-    col6.metric("🔧 รอซ่อม", repair_count)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("📦 ทั้งหมด", total_items)
+    m2.metric("✅ ปกติ", normal_count)
+    m3.metric("⚠️ ชำรุด", damaged_count)
+    m4.metric("❌ สูญหาย", lost_count)
+    m5.metric("🗑️ จำหน่ายแล้ว", disposed_count)
+    m6.metric("🔧 รอซ่อม", repair_count)
 
     st.write("---")
 
-    # --- 🧭 เมนูด้านข้างสำหรับเลือกใช้งาน ---
-    st.sidebar.write("---")
-    st.sidebar.subheader("📌 เมนูการใช้งาน")
-    app_mode = st.sidebar.radio("เลือกฟังก์ชัน:", ["🔍 ค้นหา & บันทึกผลการตรวจ", "🏷️ ระบบสร้าง QR Code พัสดุ"])
+    # --- 🗂️ เมนูหลักแบบแท็บด้านบน ชัดเจน ไม่โดนพับซ่อน ---
+    main_tab1, main_tab2, main_tab3 = st.tabs([
+        "🔍 ค้นหา & บันทึกผลการตรวจ", 
+        "🏷️ สร้าง QR Code พัสดุ", 
+        "📥 ส่งออกรายงาน Excel"
+    ])
 
-    if app_mode == "🔍 ค้นหา & บันทึกผลการตรวจ":
-        st.subheader("🔍 ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์")
+    with main_tab1:
+        st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
+        search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:")
         
-        search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือ ꪜ ข้อมูลอื่นๆ:")
         if search_query:
             filtered_df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
         else:
@@ -111,8 +106,8 @@ if uploaded_file is not None:
 
         st.dataframe(filtered_df, use_container_width=True)
         
-        with st.form("audit_form_modern"):
-            st.subheader("📝 บันทึก/อัปเดตสถานะรายชิ้น")
+        with st.form("audit_form_main"):
+            st.subheader("📝 บันทึก/อัปเดตสถานะ")
             item_target = st.selectbox(f"เลือกรายการ ({target_column})", options=df[target_column].tolist())
             new_status = st.selectbox("สถานะการตรวจ", [
                 "ปกติ (ตรวจแล้ว)", 
@@ -123,18 +118,18 @@ if uploaded_file is not None:
             ])
             inspector_name = st.text_input("ชื่อผู้ตรวจสอบ / กรรมการตรวจพัสดุ")
             
-            submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจ")
+            submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้")
             
             if submit_button:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 df.loc[df[target_column] == item_target, 'สถานะการตรวจ'] = new_status
                 df.loc[df[target_column] == item_target, 'ผู้ตรวจ'] = inspector_name
                 df.loc[df[target_column] == item_target, 'วันเวลาที่ตรวจ'] = current_time
-                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว! (กรุณาดาวน์โหลดไฟล์ Excel ด้านล่างเพื่อบันทึกข้อมูลเก็บไว้)")
+                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว! (อย่าลืมไปที่แท็บ 'ส่งออกรายงาน Excel' เพื่อดาวน์โหลดไฟล์เก็บไว้)")
 
-    elif app_mode == "🏷️ ระบบสร้าง QR Code พัสดุ":
-        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ (ประหยัดพื้นที่)")
-        selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr")
+    with main_tab2:
+        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ (ชิดขอบล่าง ประหยัดพื้นที่)")
+        selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
             qr = qrcode.QRCode(version=1, box_size=10, border=2)
@@ -174,17 +169,16 @@ if uploaded_file is not None:
                 mime="image/png"
             )
 
-    # --- 📥 ส่วนส่งออกรายงานภาพรวม ---
-    st.write("---")
-    st.subheader("📥 ส่งออกรายงานสรุปผลการตรวจประจำปี")
-    output_file = "updated_audit_data.xlsx"
-    df.to_excel(output_file, index=False)
-    with open(output_file, "rb") as f:
-        st.download_button(
-            label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด (พร้อมสถานะและเปอร์เซ็นต์)",
-            data=f,
-            file_name=f"รายงานผลการตรวจครุภัณฑ์_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-else:
-    st.info("💡 โปรดอัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์ของคุณที่แถบเมนูด้านซ้าย เพื่อเริ่มต้นใช้งานระบบแดชบอร์ด")
+    with main_tab3:
+        st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
+        st.write("ข้อมูลทั้งหมดที่มีการอัปเดตสถานะ จะถูกรวมอยู่ในไฟล์นี้เพื่อนำไปรายงานผู้บริหารหรือแนบเอกสารราชการครับ")
+        
+        output_file = "updated_audit_data.xlsx"
+        df.to_excel(output_file, index=False)
+        with open(output_file, "rb") as f:
+            st.download_button(
+                label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด (พร้อมเปอร์เซ็นต์และสถานะใหม่)",
+                data=f,
+                file_name=f"รายงานผลการตรวจครุภัณฑ์_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
