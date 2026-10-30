@@ -5,7 +5,6 @@ import re
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from streamlit_qrcode_scanner import streamlit_qrcode_scanner
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
@@ -116,10 +115,10 @@ if uploaded_file is not None:
 
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🗂️ เมนูหลัก (เพิ่มแท็บสแกนมือถือ) ---
+    # --- 🗂️ เมนูหลัก ---
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
         "🔍 ค้นหา & บันทึกผล", 
-        "📱 สแกน & ตรวจนับด้วยมือถือ",
+        "📱 ตรวจนับด้วยมือถือ (ยิงรหัส/ค้นหาด่วน)",
         "🏷️ สร้าง QR Code", 
         "📥 ส่งออกรายงาน Excel"
     ])
@@ -157,44 +156,40 @@ if uploaded_file is not None:
                 st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
 
     with main_tab2:
-        st.subheader("📱 เปิดกล้องมือถือสแกน QR Code พัสดุ")
-        st.write("ใช้กล้องมือถือส่องไปที่ QR Code ของครุภัณฑ์เพื่อดึงข้อมูลและบันทึกผลทันที")
+        st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
+        st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยพิมพ์หรือยิงบาร์โค้ด/หมายเลขครุภัณฑ์เพื่อเช็กสถานะทันที")
         
-        # เปิดใช้งานกล้องสแกน QR
-        scanned_code = streamlit_qrcode_scanner(key='qr_scanner')
+        mobile_search = st.text_input("🔎 พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:", key="mob_input")
         
-        if scanned_code:
-            st.success(f"🎯 สแกนสำเร็จ! หมายเลขครุภัณฑ์: **{scanned_code}**")
+        if mobile_search:
+            matched_mob = df[df[target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
             
-            # ค้นหาว่ามีหมายเลขนี้ในระบบไหม
-            matched_row = df[df[target_column].astype(str).str.strip() == str(scanned_code).strip()]
-            
-            if not matched_row.empty:
-                st.info("📋 พบข้อมูลครุภัณฑ์นี้ในระบบ:")
-                st.dataframe(matched_row, use_container_width=True)
+            if not matched_mob.empty:
+                st.success(f"🎯 พบข้อมูลทั้งหมด {len(matched_mob)} รายการ")
+                st.dataframe(matched_mob, use_container_width=True)
                 
-                # ฟอร์มบันทึกผลด่วนสำหรับตัวที่สแกนเจอ
-                with st.form("scan_audit_form"):
-                    st.subheader("📝 บันทึกผลการตรวจ (จากสแกน QR)")
-                    scan_status = st.selectbox("สถานะการตรวจ", [
+                with st.form("mobile_quick_audit"):
+                    st.subheader("📝 บันทึกผลการตรวจหน้างาน")
+                    mob_target = st.selectbox("เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก", options=matched_mob[target_column].tolist())
+                    mob_status = st.selectbox("สถานะการตรวจ", [
                         "ปกติ (ตรวจแล้ว)", 
                         "ชำรุด", 
                         "สูญหาย", 
                         "ต้องการซ่อมแซม", 
                         "จำหน่ายแล้ว"
-                    ], key="s_status")
-                    scan_inspector = st.text_input("ชื่อผู้ตรวจสอบ / กรรมการ", key="s_insp")
+                    ], key="m_status")
+                    mob_inspector = st.text_input("ชื่อผู้ตรวจสอบ / กรรมการ", key="m_insp")
                     
-                    scan_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้ทันที")
+                    mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที")
                     
-                    if scan_submit:
+                    if mob_submit:
                         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        df.loc[df[target_column].astype(str).str.strip() == str(scanned_code).strip(), 'สถานะการตรวจ'] = scan_status
-                        df.loc[df[target_column].astype(str).str.strip() == str(scanned_code).strip(), 'ผู้ตรวจ'] = scan_inspector
-                        df.loc[df[target_column].astype(str).str.strip() == str(scanned_code).strip(), 'วันเวลาที่ตรวจ'] = current_time
-                        st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {scanned_code} สำเร็จเรียบร้อย!")
+                        df.loc[df[target_column] == mob_target, 'สถานะการตรวจ'] = mob_status
+                        df.loc[df[target_column] == mob_target, 'ผู้ตรวจ'] = mob_inspector
+                        df.loc[df[target_column] == mob_target, 'วันเวลาที่ตรวจ'] = current_time
+                        st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
             else:
-                st.warning(f"⚠️ ไม่พบหมายเลขครุภัณฑ์ '{scanned_code}' ในไฟล์ทะเบียนที่อัปโหลด (โปรดตรวจสอบความถูกต้องของป้าย QR Code)")
+                st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
