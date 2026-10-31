@@ -69,17 +69,24 @@ st.markdown("""
         height: 100%;
         border-radius: 10px;
         transition: width 0.4s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 12px;
-        font-weight: 700;
+    }
+    /* ปรับลดขนาดตัวเลขและช่องว่างของ st.metric ให้กะทัดรัดขึ้น */
+    [data-testid="stMetricValue"] {
+        font-size: 24px !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 13px !important;
+    }
+    [data-testid="stMetric"] {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        padding: 8px 12px;
+        border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# หัวข้อขนาดกะทัดรัดเหมาะกับหน้าจอมือถือ
+# หัวข้อโปรเจกต์
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์</div>", unsafe_allow_html=True)
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
@@ -184,7 +191,6 @@ else:
     unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
     
     progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
-    # ให้แถบสีเขียวมีความกว้างขั้นต่ำ 1.5% เมื่อมีการตรวจอย่างน้อย 1 ชิ้น เพื่อให้มองเห็นสีเขียวได้ชัดเจน
     bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
     
     normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
