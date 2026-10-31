@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import re
+import os
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
-    page_title="ระบบตรวจพัสดุและครุภัณฑ์",
+    page_title="ระบบตรวจพัสดุและครุภัณฑ์ราชการ",
     page_icon="🏛️",
     layout="wide"
 )
@@ -26,31 +27,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ")
+st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ (ระบบกลางประจำหน่วยงาน)")
 st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
-# ส่วนอัปโหลดไฟล์ด้านบน
-col_file, col_status, col_row = st.columns([2.2, 1.3, 1.2])
+# กำหนดชื่อไฟล์กลางที่อัปไว้บน GitHub
+DEFAULT_FILE = "default_asset.xlsx"
+header_row = 4  # แถวหัวตารางมาตรฐานจากไฟล์ของคุณ
 
-with col_file:
-    uploaded_file = st.file_uploader("📁 อัปโหลดไฟล์ Excel ทะเบียนครุภัณฑ์", type=["xlsx", "xls", "csv"])
-
-with col_status:
-    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    if uploaded_file is not None:
-        st.success("โหลดข้อมูลสำเร็จ!")
-    else:
-        st.info("รออัปโหลดไฟล์...")
-
-with col_row:
-    st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #31333F;'>แถวหัวตาราง (Row index)</div>", unsafe_allow_html=True)
-    header_row = st.number_input("", min_value=0, value=4, step=1, label_visibility="collapsed")
-
-if uploaded_file is not None:
-    if uploaded_file.name.endswith('.csv'):
-        raw_df = pd.read_csv(uploaded_file, header=None)
-    else:
-        raw_df = pd.read_excel(uploaded_file, header=None)
+if not os.path.exists(DEFAULT_FILE):
+    st.error(f"⚠️ ไม่พบไฟล์ข้อมูลกลาง '{DEFAULT_FILE}' บนระบบ โปรดอัปโหลดไฟล์ Excel ตั้งต้นชื่อ 'default_asset.xlsx' ขึ้นไปไว้ที่หน้าหลักของ GitHub ครับ")
+else:
+    # โหลดไฟล์กลางอัตโนมัติ
+    raw_df = pd.read_excel(DEFAULT_FILE, header=None)
     
     top_cols = raw_df.iloc[header_row].fillna('').astype(str)
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
@@ -87,10 +75,8 @@ if uploaded_file is not None:
             else:
                 df[col] = '-'
 
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
-
     # --- 📊 ส่วนสรุปผลภาพรวม ---
-    st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี")
+    st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี (ข้อมูลกลาง)")
     
     total_items = len(df)
     checked_items = len(df[df['สถานะการตรวจ'] != 'ยังไม่ได้ตรวจ'])
@@ -153,7 +139,7 @@ if uploaded_file is not None:
                 df.loc[df[target_column] == item_target, 'สถานะการตรวจ'] = new_status
                 df.loc[df[target_column] == item_target, 'ผู้ตรวจ'] = inspector_name
                 df.loc[df[target_column] == item_target, 'วันเวลาที่ตรวจ'] = current_time
-                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
+                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว! (หมายเหตุ: ผลการบันทึกนี้จะแสดงผลในเซสชันปัจจุบัน หากต้องการบันทึกถาวรให้ดาวน์โหลดรายงาน Excel ไปเก็บบันทึกประจำวันครับ)")
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
@@ -196,21 +182,19 @@ if uploaded_file is not None:
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
-            # สร้าง QR Code 
             qr = qrcode.QRCode(version=1, box_size=12, border=2)
             qr.add_data(str(selected_qr_item))
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
-            padding_bottom = 28  # ลดพื้นที่ว่างด้านล่างลงเพื่อให้ตัวเลขขยับขึ้นไปชิด QR Code มากขึ้น
+            padding_bottom = 28  
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
             text_to_print = str(selected_qr_item)
             
-            # โหลดฟอนต์ขนาด 20px แบบปกติ
             try:
                 font = ImageFont.truetype("arial.ttf", 20)
             except:
@@ -219,14 +203,12 @@ if uploaded_file is not None:
                 except:
                     font = ImageFont.load_default()
                 
-            # คำนวณความกว้างข้อความเพื่อจัดกึ่งกลาง
             bbox = draw.textbbox((0, 0), text_to_print, font=font)
             text_width = bbox[2] - bbox[0]
             
             text_x = (qr_width - text_width) / 2
-            text_y = qr_height - 1  # ดึงตำแหน่งให้อยู่ติดขอบล่างของ QR Code พอดี
+            text_y = qr_height - 1  
             
-            # วาดตัวเลขชิดติด QR Code
             draw.text((text_x, text_y), text_to_print, fill="black", font=font)
             
             buf = BytesIO()
@@ -243,7 +225,7 @@ if uploaded_file is not None:
 
     with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
-        st.write("ข้อมูลทั้งหมดที่มีการอัปเดตสถานะ จะถูกรวมอยู่ในไฟล์นี้เพื่อนำไปรายงานผู้บริหารหรือแนบเอกสารราชการครับ")
+        st.write("ข้อมูลทั้งหมดสามารถดาวน์โหลดเพื่อนำไปสรุปผลรายงานทางการได้ทันทีครับ")
         
         output_file = "updated_audit_data.xlsx"
         df.to_excel(output_file, index=False)
