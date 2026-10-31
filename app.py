@@ -30,15 +30,24 @@ st.markdown("""
 st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ (ระบบกลางประจำหน่วยงาน)")
 st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
-# กำหนดชื่อไฟล์กลางที่อัปไว้บน GitHub
-DEFAULT_FILE = "default_asset.xlsx"
+# ตรวจสอบไฟล์กลาง (.xlsx หรือ .xls)
+if os.path.exists("default_asset.xlsx"):
+    DEFAULT_FILE = "default_asset.xlsx"
+elif os.path.exists("default_asset.xls"):
+    DEFAULT_FILE = "default_asset.xls"
+else:
+    DEFAULT_FILE = None
+
 header_row = 4  # แถวหัวตารางมาตรฐานจากไฟล์ของคุณ
 
-if not os.path.exists(DEFAULT_FILE):
-    st.error(f"⚠️ ไม่พบไฟล์ข้อมูลกลาง '{DEFAULT_FILE}' บนระบบ โปรดอัปโหลดไฟล์ Excel ตั้งต้นชื่อ 'default_asset.xlsx' ขึ้นไปไว้ที่หน้าหลักของ GitHub ครับ")
+if DEFAULT_FILE is None:
+    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บนระบบ โปรดอัปโหลดไฟล์ขึ้นไปไว้ที่หน้าหลักของ GitHub ครับ")
 else:
-    # โหลดไฟล์กลางอัตโนมัติ
-    raw_df = pd.read_excel(DEFAULT_FILE, header=None)
+    # โหลดไฟล์กลางอัตโนมัติ (รองรับ .xls และ .xlsx ด้วย xlrd/openpyxl)
+    if DEFAULT_FILE.endswith('.csv'):
+        raw_df = pd.read_csv(DEFAULT_FILE, header=None)
+    else:
+        raw_df = pd.read_excel(DEFAULT_FILE, header=None)
     
     top_cols = raw_df.iloc[header_row].fillna('').astype(str)
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
@@ -139,7 +148,7 @@ else:
                 df.loc[df[target_column] == item_target, 'สถานะการตรวจ'] = new_status
                 df.loc[df[target_column] == item_target, 'ผู้ตรวจ'] = inspector_name
                 df.loc[df[target_column] == item_target, 'วันเวลาที่ตรวจ'] = current_time
-                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว! (หมายเหตุ: ผลการบันทึกนี้จะแสดงผลในเซสชันปัจจุบัน หากต้องการบันทึกถาวรให้ดาวน์โหลดรายงาน Excel ไปเก็บบันทึกประจำวันครับ)")
+                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
