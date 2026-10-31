@@ -9,7 +9,7 @@ from io import BytesIO
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
-    page_title="ระบบตรวจพัสดุและครุภัณฑ์ราชการ",
+    page_title="ระบบตรวจพัสดุและครุภัณฑ์",
     page_icon="🏛️",
     layout="wide"
 )
@@ -27,7 +27,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ (ระบบกลางประจำหน่วยงาน)")
+st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์")
 st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
 # ตรวจสอบไฟล์กลาง (.xlsx หรือ .xls)
