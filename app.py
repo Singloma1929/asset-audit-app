@@ -6,8 +6,6 @@ import os
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-import cv2
-import numpy as np
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
@@ -244,44 +242,21 @@ else:
     with main_tab1:
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
         
-        col_search, col_scan_btn, col_filter = st.columns([2.2, 0.8, 1])
+        # รองรับการดึงรหัสผ่านลิงก์ QR Code ที่สแกนเข้ามาอัตโนมัติ
+        query_params = st.query_params
+        scan_param = query_params.get("scan", "")
+
+        col_search, col_filter = st.columns([3, 1])
         with col_search:
-            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:", key="main_search_input")
-        with col_scan_btn:
-            st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #31333F;'>สแกน QR Code</div>", unsafe_allow_html=True)
-            scanner_toggle = st.toggle("📷 เปิดกล้องสแกน", key="toggle_scanner")
+            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:", value=scan_param)
         with col_filter:
             status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"])
-
-        scanned_code = None
-        if scanner_toggle:
-            st.info("📷 ถ่ายรูปป้าย QR Code ให้เห็นชัดเจนเพื่อสแกนรหัสครับ")
-            camera_img = st.camera_input("ถ่ายภาพ QR Code")
-            if camera_img is not None:
-                bytes_data = camera_img.getvalue()
-                np_arr = np.frombuffer(bytes_data, np.uint8)
-                img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                
-                qr_detector = cv2.QRCodeDetector()
-                data, bbox, straight_qrcode = qr_detector.detectAndDecode(img)
-                
-                if data:
-                    match_scan = re.search(r'scan=([^&]+)', data)
-                    if match_scan:
-                        scanned_code = match_scan.group(1)
-                    else:
-                        scanned_code = data.strip()
-                    st.success(f"🎯 สแกนสำเร็จ! หมายเลขครุภัณฑ์: {scanned_code}")
-                else:
-                    st.warning("⚠️ ยังไม่พบ QR Code ในภาพ ลองถ่ายให้ใกล้และชัดเจนขึ้นอีกครั้งครับ")
-
+        
         display_df = df[valid_mask]
         if status_filter != "ทั้งหมด":
             display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
-        
-        effective_search = scanned_code if scanned_code else search_query
-        if effective_search:
-            display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(effective_search, case=False)).any(axis=1)]
+        if search_query:
+            display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
         st.dataframe(display_df, use_container_width=True)
         
@@ -291,8 +266,8 @@ else:
             with col_item:
                 default_index = 0
                 valid_list = df[valid_mask][target_column].tolist()
-                if scanned_code and scanned_code in valid_list:
-                    default_index = valid_list.index(scanned_code)
+                if search_query and search_query in valid_list:
+                    default_index = valid_list.index(search_query)
 
                 item_target = st.selectbox(
                     f"เลือกรายการ ({target_column})",
@@ -356,7 +331,6 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        query_params = st.query_params
         default_mob_search = query_params.get("scan", "")
         
         mobile_search = st.text_input("🔎 พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:", value=default_mob_search, key="mob_input")
