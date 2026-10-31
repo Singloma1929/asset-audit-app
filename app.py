@@ -8,7 +8,7 @@ from io import BytesIO
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
-    page_title="ระบบตรวจพัสดุและครุภัณฑ์ราชการ",
+    page_title="ระบบตรวจพัสดุและครุภัณฑ์",
     page_icon="🏛️",
     layout="wide"
 )
