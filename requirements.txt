@@ -6,3 +6,4 @@ Pillow
 python-calamine
 streamlit-qrcode-scanner
 xlrd
+streamlit-qrcode-scanner
