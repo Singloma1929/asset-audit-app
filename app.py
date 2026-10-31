@@ -126,6 +126,13 @@ def render_status_badge(status_val, cond_val, inspector_val):
     else:
         st.markdown("<div class='status-box-red'>❌ ยังไม่ได้ตรวจ</div>", unsafe_allow_html=True)
 
+def render_save_status_badge(status_val, timestamp_val):
+    if status_val == 'ตรวจแล้ว':
+        time_info = f" (เมื่อ: {timestamp_val})" if timestamp_val and timestamp_val != '-' else ""
+        st.markdown(f"<div class='status-box-green'>✅ รายการนี้ได้บันทึกแล้ว{time_info}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
+
 df, target_column = get_shared_data()
 
 if df is None:
@@ -232,7 +239,15 @@ else:
                 with c3:
                     inspector_name = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)")
                 
-                submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้")
+                # แบ่งคอลัมน์ปุ่มกดบันทึกด้านซ้าย และช่องสถานะการบันทึกด้านขวา
+                btn_col, save_status_col = st.columns([1.2, 1.8])
+                with btn_col:
+                    submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้", use_container_width=True)
+                with save_status_col:
+                    render_save_status_badge(
+                        current_row['สถานะการตรวจ'],
+                        current_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+                    )
                 
                 if submit_button:
                     if new_status == "โปรดระบุสถานะ":
@@ -302,7 +317,15 @@ else:
                         with mc3:
                             mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
                         
-                        mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที")
+                        # แบ่งคอลัมน์ปุ่มกดบันทึกด้านซ้าย และช่องสถานะการบันทึกด้านขวา (สำหรับโหมดมือถือ)
+                        m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
+                        with m_btn_col:
+                            mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที", use_container_width=True)
+                        with m_save_status_col:
+                            render_save_status_badge(
+                                mob_row['สถานะการตรวจ'],
+                                mob_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+                            )
                         
                         if mob_submit:
                             if mob_status == "โปรดระบุสถานะ":
