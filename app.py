@@ -24,6 +24,30 @@ st.markdown("""
         padding: 4px 12px !important;
         margin-bottom: 0px !important;
     }
+    .status-box-green {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        height: 40px;
+    }
+    .status-box-red {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        height: 40px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -33,7 +57,6 @@ st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 PROGRESS_FILE = "audit_progress.csv"
 header_row = 4
 
-# ใช้ @st.cache_resource เพื่อให้ข้อมูลแชร์ตรงกันทุกคน และไม่หายเวลารีเฟรชหน้าเว็บ
 @st.cache_resource
 def get_shared_data():
     if os.path.exists("default_asset.xlsx"):
@@ -65,7 +88,6 @@ def get_shared_data():
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_col = potential_cols[0] if potential_cols else df.columns[0]
 
-    # ลบคอลัมน์แบบเก่าออก (ถ้ามี) และสร้าง 4 คอลัมน์ใหม่ตามที่ต้องการ
     audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
     for col in audit_cols:
         if col not in df.columns:
@@ -74,7 +96,6 @@ def get_shared_data():
             else:
                 df[col] = '-'
 
-    # ถ้าเคยมีการบันทึกไว้ในไฟล์ CSV ให้ดึงข้อมูลล่าสุดมาทับทันที
     if os.path.exists(PROGRESS_FILE):
         try:
             saved_df = pd.read_csv(PROGRESS_FILE, dtype=str)
@@ -97,6 +118,13 @@ def save_progress(df, target_col):
         checked_df.to_csv(PROGRESS_FILE, index=False, encoding='utf-8-sig')
     except Exception:
         pass
+
+def render_status_badge(status_val, cond_val, inspector_val):
+    if status_val == 'ตรวจแล้ว':
+        detail = f" (สภาพ: {cond_val} | ผู้ตรวจ: {inspector_val})" if cond_val != '-' else ""
+        st.markdown(f"<div class='status-box-green'>✅ ผ่านการตรวจแล้ว{detail}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='status-box-red'>❌ ยังไม่ได้ตรวจ</div>", unsafe_allow_html=True)
 
 df, target_column = get_shared_data()
 
@@ -146,10 +174,17 @@ else:
     ])
 
     condition_options = [
+        "โปรดระบุสภาพ",
         "ปกติ", 
         "ชำรุด/เสียหาย", 
         "เสื่อมสภาพ/รอจำหน่าย", 
         "สูญหาย"
+    ]
+    
+    status_options = [
+        "โปรดระบุสถานะ",
+        "ตรวจแล้ว",
+        "ยังไม่ตรวจ"
     ]
 
     with main_tab1:
@@ -169,40 +204,60 @@ else:
 
         st.dataframe(display_df, use_container_width=True)
         
-        with st.form("audit_form_main"):
-            st.subheader("📝 บันทึก/อัปเดตผลการตรวจสอบ")
-            item_target = st.selectbox(f"เลือกรายการ ({target_column})", options=df[valid_mask][target_column].tolist())
-            
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                new_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options)
-            with c2:
-                new_status = st.selectbox("2. สถานะการตรวจ", ["ตรวจแล้ว", "ยังไม่ตรวจ"], index=0)
-            with c3:
-                inspector_name = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)")
-            
-            submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้")
-            
-            if submit_button:
-                # เวลาประเทศไทย (UTC+7)
-                thai_time = datetime.utcnow() + timedelta(hours=7)
-                current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+        st.markdown("### 📝 บันทึก/อัปเดตผลการตรวจสอบ")
+        with st.container(border=True):
+            # แบ่งครึ่งซ้าย-ขวา: ซ้ายเลือกหมายเลขครุภัณฑ์ ขวาแสดงแถบสถานะสีเขียว/แดงทันที
+            col_item, col_badge = st.columns([1.2, 1.8])
+            with col_item:
+                item_target = st.selectbox(
+                    f"เลือกรายการ ({target_column})",
+                    options=df[valid_mask][target_column].tolist(),
+                    key="main_item_select"
+                )
+            with col_badge:
+                st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
+                current_row = df[df[target_column].astype(str) == str(item_target)].iloc[0]
+                render_status_badge(
+                    current_row['สถานะการตรวจ'],
+                    current_row['สภาพครุภัณฑ์'],
+                    current_row['ผู้ตรวจ']
+                )
+
+            with st.form("audit_form_main", border=False):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    new_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0)
+                with c2:
+                    new_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0)
+                with c3:
+                    inspector_name = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)")
                 
-                mask = df[target_column].astype(str) == str(item_target)
-                if new_status == "ยังไม่ตรวจ":
-                    df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
-                    df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
-                    df.loc[mask, 'ผู้ตรวจ'] = '-'
-                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
-                else:
-                    df.loc[mask, 'สภาพครุภัณฑ์'] = new_condition
-                    df.loc[mask, 'สถานะการตรวจ'] = new_status
-                    df.loc[mask, 'ผู้ตรวจ'] = inspector_name if inspector_name.strip() else '-'
-                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
+                submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้")
                 
-                save_progress(df, target_column)
-                st.success(f"✅ บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
-                st.rerun()
+                if submit_button:
+                    if new_status == "โปรดระบุสถานะ":
+                        st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
+                    elif new_status == "ตรวจแล้ว" and new_condition == "โปรดระบุสภาพ":
+                        st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
+                    else:
+                        thai_time = datetime.utcnow() + timedelta(hours=7)
+                        current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+                        
+                        mask = df[target_column].astype(str) == str(item_target)
+                        if new_status == "ยังไม่ตรวจ":
+                            df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
+                            df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
+                            df.loc[mask, 'ผู้ตรวจ'] = '-'
+                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
+                        else:
+                            df.loc[mask, 'สภาพครุภัณฑ์'] = new_condition
+                            df.loc[mask, 'สถานะการตรวจ'] = new_status
+                            df.loc[mask, 'ผู้ตรวจ'] = inspector_name if inspector_name.strip() else '-'
+                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
+                        
+                        save_progress(df, target_column)
+                        st.success(f"✅ บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
+                        st.rerun()
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
@@ -220,34 +275,59 @@ else:
                 st.success(f"🎯 พบข้อมูลทั้งหมด {len(matched_mob)} รายการ")
                 st.dataframe(matched_mob, use_container_width=True)
                 
-                with st.form("mobile_quick_audit"):
-                    st.subheader("📝 บันทึกผลการตรวจหน้างาน")
-                    mob_target = st.selectbox("เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก", options=matched_mob[target_column].tolist())
-                    mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, key="m_cond")
-                    mob_status = st.selectbox("2. สถานะการตรวจ", ["ตรวจแล้ว", "ยังไม่ตรวจ"], index=0, key="m_status")
-                    mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ / กรรมการ)", key="m_insp")
-                    
-                    mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที")
-                    
-                    if mob_submit:
-                        thai_time = datetime.utcnow() + timedelta(hours=7)
-                        current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+                st.markdown("### 📝 บันทึกผลการตรวจหน้างาน")
+                with st.container(border=True):
+                    m_col_item, m_col_badge = st.columns([1.2, 1.8])
+                    with m_col_item:
+                        mob_target = st.selectbox(
+                            "เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก",
+                            options=matched_mob[target_column].tolist(),
+                            key="mob_item_select"
+                        )
+                    with m_col_badge:
+                        st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
+                        mob_row = df[df[target_column].astype(str) == str(mob_target)].iloc[0]
+                        render_status_badge(
+                            mob_row['สถานะการตรวจ'],
+                            mob_row['สภาพครุภัณฑ์'],
+                            mob_row['ผู้ตรวจ']
+                        )
+
+                    with st.form("mobile_quick_audit", border=False):
+                        mc1, mc2, mc3 = st.columns(3)
+                        with mc1:
+                            mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0, key="m_cond")
+                        with mc2:
+                            mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0, key="m_status")
+                        with mc3:
+                            mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
                         
-                        mask = df[target_column].astype(str) == str(mob_target)
-                        if mob_status == "ยังไม่ตรวจ":
-                            df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
-                            df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
-                            df.loc[mask, 'ผู้ตรวจ'] = '-'
-                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
-                        else:
-                            df.loc[mask, 'สภาพครุภัณฑ์'] = mob_condition
-                            df.loc[mask, 'สถานะการตรวจ'] = mob_status
-                            df.loc[mask, 'ผู้ตรวจ'] = mob_inspector if mob_inspector.strip() else '-'
-                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
+                        mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที")
                         
-                        save_progress(df, target_column)
-                        st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
-                        st.rerun()
+                        if mob_submit:
+                            if mob_status == "โปรดระบุสถานะ":
+                                st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
+                            elif mob_status == "ตรวจแล้ว" and mob_condition == "โปรดระบุสภาพ":
+                                st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
+                            else:
+                                thai_time = datetime.utcnow() + timedelta(hours=7)
+                                current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+                                
+                                mask = df[target_column].astype(str) == str(mob_target)
+                                if mob_status == "ยังไม่ตรวจ":
+                                    df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
+                                    df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
+                                    df.loc[mask, 'ผู้ตรวจ'] = '-'
+                                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
+                                else:
+                                    df.loc[mask, 'สภาพครุภัณฑ์'] = mob_condition
+                                    df.loc[mask, 'สถานะการตรวจ'] = mob_status
+                                    df.loc[mask, 'ผู้ตรวจ'] = mob_inspector if mob_inspector.strip() else '-'
+                                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
+                                
+                                save_progress(df, target_column)
+                                st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
+                                st.rerun()
             else:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
 
