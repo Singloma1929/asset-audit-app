@@ -70,6 +70,7 @@ st.markdown("""
         border-radius: 10px;
         transition: width 0.4s ease;
     }
+    /* ปรับลดขนาดตัวเลขและช่องว่างของ st.metric ให้กะทัดรัดขึ้น */
     [data-testid="stMetricValue"] {
         font-size: 24px !important;
     }
@@ -242,13 +243,9 @@ else:
     with main_tab1:
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
         
-        # รองรับการดึงรหัสผ่านลิงก์ QR Code ที่สแกนเข้ามาอัตโนมัติ
-        query_params = st.query_params
-        scan_param = query_params.get("scan", "")
-
         col_search, col_filter = st.columns([3, 1])
         with col_search:
-            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:", value=scan_param)
+            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:")
         with col_filter:
             status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"])
         
@@ -264,15 +261,9 @@ else:
         with st.container(border=True):
             col_item, col_badge = st.columns([1.2, 1.8])
             with col_item:
-                default_index = 0
-                valid_list = df[valid_mask][target_column].tolist()
-                if search_query and search_query in valid_list:
-                    default_index = valid_list.index(search_query)
-
                 item_target = st.selectbox(
                     f"เลือกรายการ ({target_column})",
-                    options=valid_list,
-                    index=default_index,
+                    options=df[valid_mask][target_column].tolist(),
                     key="main_item_select"
                 )
             with col_badge:
@@ -331,6 +322,7 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
+        query_params = st.query_params
         default_mob_search = query_params.get("scan", "")
         
         mobile_search = st.text_input("🔎 พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:", value=default_mob_search, key="mob_input")
