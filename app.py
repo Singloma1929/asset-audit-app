@@ -9,7 +9,7 @@ from io import BytesIO
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
-    page_title="ระบบตรวจพัสดุและครุภัณฑ์",
+    page_title="ระบบตรวจพัสดุและครุภัณฑ์ราชการ",
     page_icon="🏛️",
     layout="wide"
 )
@@ -27,7 +27,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์")
+st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ (ระบบกลางประจำหน่วยงาน)")
 st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
 
 # ตรวจสอบไฟล์กลาง (.xlsx หรือ .xls)
@@ -43,7 +43,7 @@ header_row = 4  # แถวหัวตารางมาตรฐานจา�
 if DEFAULT_FILE is None:
     st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บนระบบ โปรดอัปโหลดไฟล์ขึ้นไปไว้ที่หน้าหลักของ GitHub ครับ")
 else:
-    # โหลดไฟล์กลางอัตโนมัติ (รองรับ .xls และ .xlsx ด้วย xlrd/openpyxl)
+    # โหลดไฟล์กลางอัตโนมัติ
     if DEFAULT_FILE.endswith('.csv'):
         raw_df = pd.read_csv(DEFAULT_FILE, header=None)
     else:
@@ -154,7 +154,11 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยพิมพ์หรือยิงบาร์โค้ด/หมายเลขครุภัณฑ์เพื่อเช็กสถานะทันที")
         
-        mobile_search = st.text_input("🔎 พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:", key="mob_input")
+        # รองรับการดึงค่ารหัสอัตโนมัติหากสแกน QR Code เข้ามาทางลิงก์เว็บ
+        query_params = st.query_params
+        default_mob_search = query_params.get("scan", "")
+        
+        mobile_search = st.text_input("🔎 พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:", value=default_mob_search, key="mob_input")
         
         if mobile_search:
             matched_mob = df[df[target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
@@ -187,12 +191,16 @@ else:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
 
     with main_tab3:
-        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมข้อความกำกับ")
+        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
+            # ฝังลิงก์เว็บพ่วงพารามิเตอร์รหัสครุภัณฑ์เข้าไปใน QR Code
+            base_url = "https://asset-audit-app-bbywyvjvpavzrkh8skqrmf.streamlit.app/"
+            qr_payload = f"{base_url}?scan={selected_qr_item}"
+            
             qr = qrcode.QRCode(version=1, box_size=12, border=2)
-            qr.add_data(str(selected_qr_item))
+            qr.add_data(qr_payload)
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
