@@ -43,7 +43,7 @@ header_row = 4  # แถวหัวตารางมาตรฐานจา�
 if DEFAULT_FILE is None:
     st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บนระบบ โปรดอัปโหลดไฟล์ขึ้นไปไว้ที่หน้าหลักของ GitHub ครับ")
 else:
-    # โหลดไฟล์กลางอัตโนมัติ
+    # โหลดไฟล์แบบอ่านโครงสร้างทั้งหมดเพื่อเก็บหัวตารางเดิมไว้
     if DEFAULT_FILE.endswith('.csv'):
         raw_df = pd.read_csv(DEFAULT_FILE, header=None)
     else:
@@ -59,12 +59,13 @@ else:
         else:
             combined_columns.append(t if t and t != 'None' else 'Unnamed')
 
-    df = raw_df.iloc[header_row + 2:].copy()
-    df.columns = combined_columns
-    df = df.dropna(how='all').reset_index(drop=True)
+    # ดึงข้อมูลส่วนตาราง
+    data_part = raw_df.iloc[header_row + 2:].copy()
+    data_part.columns = combined_columns
+    data_part = data_part.dropna(how='all').reset_index(drop=True)
 
-    potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
-    target_column = potential_cols[0] if potential_cols else df.columns[0]
+    potential_cols = [c for c in data_part.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
+    target_column = potential_cols[0] if potential_cols else data_part.columns[0]
 
     def is_valid_asset_code(val):
         if pd.isna(val):
@@ -74,28 +75,27 @@ else:
             return False
         return bool(re.search(r'\d', val_str))
 
-    df = df[df[target_column].apply(is_valid_asset_code)].reset_index(drop=True)
+    # กรองเฉพาะแถวที่มีหมายเลขครุภัณฑ์จริง
+    valid_mask = data_part[target_column].apply(is_valid_asset_code)
     
+    # ตรวจสอบและสร้างคอลัมน์สถานะถ้ายังไม่มีในไฟล์ Excel ต้นฉบับ
     audit_columns = ['สถานะการตรวจ', 'ผู้ตรวจ', 'วันเวลาที่ตรวจ']
     for col in audit_columns:
-        if col not in df.columns:
-            if col == 'สถานะการตรวจ':
-                df[col] = 'ยังไม่ได้ตรวจ'
-            else:
-                df[col] = '-'
+        if col not in data_part.columns:
+            data_part[col] = '-' if col != 'สถานะการตรวจ' else 'ยังไม่ได้ตรวจ'
 
     # --- 📊 ส่วนสรุปผลภาพรวม ---
     st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี (ข้อมูลกลาง)")
     
-    total_items = len(df)
-    checked_items = len(df[df['สถานะการตรวจ'] != 'ยังไม่ได้ตรวจ'])
+    total_items = len(data_part[valid_mask])
+    checked_items = len(data_part[valid_mask][data_part['สถานะการตรวจ'] != 'ยังไม่ได้ตรวจ'])
     progress_pct = int((checked_items / total_items) * 100) if total_items > 0 else 0
     
-    normal_count = len(df[df['สถานะการตรวจ'] == 'ปกติ (ตรวจแล้ว)'])
-    damaged_count = len(df[df['สถานะการตรวจ'] == 'ชำรุด'])
-    lost_count = len(df[df['สถานะการตรวจ'] == 'สูญหาย'])
-    disposed_count = len(df[df['สถานะการตรวจ'] == 'จำหน่ายแล้ว'])
-    repair_count = len(df[df['สถานะการตรวจ'] == 'ต้องการซ่อมแซม'])
+    normal_count = len(data_part[valid_mask][data_part['สถานะการตรวจ'] == 'ปกติ (ตรวจแล้ว)'])
+    damaged_count = len(data_part[valid_mask][data_part['สถานะการตรวจ'] == 'ชำรุด'])
+    lost_count = len(data_part[valid_mask][data_part['สถานะการตรวจ'] == 'สูญหาย'])
+    disposed_count = len(data_part[valid_mask][data_part['สถานะการตรวจ'] == 'จำหน่ายแล้ว'])
+    repair_count = len(data_part[valid_mask][data_part['สถานะการตรวจ'] == 'ต้องการซ่อมแซม'])
 
     st.write(f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct}%** ({checked_items} จาก {total_items} รายการ)")
     st.progress(progress_pct / 100)
@@ -122,16 +122,15 @@ else:
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
         search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:")
         
+        display_df = data_part[valid_mask]
         if search_query:
-            filtered_df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
-        else:
-            filtered_df = df
+            display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
-        st.dataframe(filtered_df, use_container_width=True)
+        st.dataframe(display_df, use_container_width=True)
         
         with st.form("audit_form_main"):
             st.subheader("📝 บันทึก/อัปเดตสถานะ")
-            item_target = st.selectbox(f"เลือกรายการ ({target_column})", options=df[target_column].tolist())
+            item_target = st.selectbox(f"เลือกรายการ ({target_column})", options=data_part[valid_mask][target_column].tolist())
             new_status = st.selectbox("สถานะการตรวจ", [
                 "ปกติ (ตรวจแล้ว)", 
                 "ชำรุด", 
@@ -145,23 +144,34 @@ else:
             
             if submit_button:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                df.loc[df[target_column] == item_target, 'สถานะการตรวจ'] = new_status
-                df.loc[df[target_column] == item_target, 'ผู้ตรวจ'] = inspector_name
-                df.loc[df[target_column] == item_target, 'วันเวลาที่ตรวจ'] = current_time
-                st.success(f"บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
+                # อัปเดตข้อมูลลงใน DataFrame หลัก
+                data_part.loc[data_part[target_column] == item_target, 'สถานะการตรวจ'] = new_status
+                data_part.loc[data_part[target_column] == item_target, 'ผู้ตรวจ'] = inspector_name
+                data_part.loc[data_part[target_column] == item_target, 'วันเวลาที่ตรวจ'] = current_time
+                
+                # เขียนทับข้อมูลกลับลงไฟล์กลางทันที เพื่อให้ข้อมูลบันทึกถาวร
+                raw_df.iloc[header_row + 2:header_row + 2 + len(data_part)] = data_part.values
+                if DEFAULT_FILE.endswith('.xlsx'):
+                    raw_df.to_excel(DEFAULT_FILE, index=False, header=False)
+                else:
+                    # กรณีไฟล์เดิมเป็น .xls เซฟแปลงเป็น .xlsx เพื่อให้รองรับการเขียนทับอย่างไร้ปัญหา
+                    DEFAULT_FILE = "default_asset.xlsx"
+                    raw_df.to_excel(DEFAULT_FILE, index=False, header=False)
+                
+                st.success(f"✅ บันทึกผลรายการ {item_target} เรียบร้อยและบันทึกลงระบบกลางสำเร็จ!")
+                st.rerun()
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยพิมพ์หรือยิงบาร์โค้ด/หมายเลขครุภัณฑ์เพื่อเช็กสถานะทันที")
         
-        # รองรับการดึงค่ารหัสอัตโนมัติหากสแกน QR Code เข้ามาทางลิงก์เว็บ
         query_params = st.query_params
         default_mob_search = query_params.get("scan", "")
         
         mobile_search = st.text_input("🔎 พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:", value=default_mob_search, key="mob_input")
         
         if mobile_search:
-            matched_mob = df[df[target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
+            matched_mob = data_part[valid_mask][data_part[valid_mask][target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
             
             if not matched_mob.empty:
                 st.success(f"🎯 พบข้อมูลทั้งหมด {len(matched_mob)} รายการ")
@@ -183,19 +193,27 @@ else:
                     
                     if mob_submit:
                         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        df.loc[df[target_column] == mob_target, 'สถานะการตรวจ'] = mob_status
-                        df.loc[df[target_column] == mob_target, 'ผู้ตรวจ'] = mob_inspector
-                        df.loc[df[target_column] == mob_target, 'วันเวลาที่ตรวจ'] = current_time
+                        data_part.loc[data_part[target_column] == mob_target, 'สถานะการตรวจ'] = mob_status
+                        data_part.loc[data_part[target_column] == mob_target, 'ผู้ตรวจ'] = mob_inspector
+                        data_part.loc[data_part[target_column] == mob_target, 'วันเวลาที่ตรวจ'] = current_time
+                        
+                        raw_df.iloc[header_row + 2:header_row + 2 + len(data_part)] = data_part.values
+                        if DEFAULT_FILE.endswith('.xlsx'):
+                            raw_df.to_excel(DEFAULT_FILE, index=False, header=False)
+                        else:
+                            DEFAULT_FILE = "default_asset.xlsx"
+                            raw_df.to_excel(DEFAULT_FILE, index=False, header=False)
+                            
                         st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
+                        st.rerun()
             else:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
-        selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[target_column].tolist(), key="gen_qr_tab")
+        selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=data_part[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
-            # ฝังลิงก์เว็บพ่วงพารามิเตอร์รหัสครุภัณฑ์เข้าไปใน QR Code
             base_url = "https://asset-audit-app-bbywyvjvpavzrkh8skqrmf.streamlit.app/"
             qr_payload = f"{base_url}?scan={selected_qr_item}"
             
@@ -242,14 +260,15 @@ else:
 
     with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
-        st.write("ข้อมูลทั้งหมดสามารถดาวน์โหลดเพื่อนำไปสรุปผลรายงานทางการได้ทันทีครับ")
+        st.write("ข้อมูลการตรวจสอบทั้งหมดถูกอัปเดตแบบเรียลไทม์ สามารถดาวน์โหลดรายงานไปใช้ได้ทันทีครับ")
         
-        output_file = "updated_audit_data.xlsx"
-        df.to_excel(output_file, index=False)
-        with open(output_file, "rb") as f:
-            st.download_button(
-                label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด",
-                data=f,
-                file_name=f"รายงานผลการตรวจครุภัณฑ์_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        output_buffer = BytesIO()
+        data_part.to_excel(output_buffer, index=False)
+        output_data = output_buffer.getvalue()
+        
+        st.download_button(
+            label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด",
+            data=output_data,
+            file_name=f"รายงานผลการตรวจครุภัณฑ์_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
