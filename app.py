@@ -9,7 +9,7 @@ from io import BytesIO
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
-    page_title="ระบบตรวจพัสดุและครุภัณฑ์ราชการ",
+    page_title="ระบบตรวจครุภัณฑ์",
     page_icon="🏛️",
     layout="wide"
 )
@@ -17,8 +17,14 @@ st.set_page_config(
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 1.2rem;
+        padding-top: 1rem;
         padding-bottom: 2rem;
+    }
+    .app-header {
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 4px;
     }
     .stAlert {
         padding: 4px 12px !important;
@@ -34,7 +40,7 @@ st.markdown("""
         font-size: 15px;
         display: flex;
         align-items: center;
-        height: 40px;
+        min-height: 40px;
     }
     .status-box-red {
         background-color: #f8d7da;
@@ -46,13 +52,36 @@ st.markdown("""
         font-size: 15px;
         display: flex;
         align-items: center;
-        height: 40px;
+        min-height: 40px;
+    }
+    .progress-wrapper {
+        background-color: #e5e7eb;
+        border-radius: 10px;
+        width: 100%;
+        height: 22px;
+        overflow: hidden;
+        margin-top: 6px;
+        margin-bottom: 14px;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .progress-fill {
+        background: linear-gradient(90deg, #22c55e, #16a34a);
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.4s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        font-weight: 700;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏛️ ระบบตรวจพัสดุและครุภัณฑ์ราชการ (ระบบกลางประจำหน่วยงาน)")
-st.markdown("<hr style='margin: 8px 0px 15px 0px;'>", unsafe_allow_html=True)
+# หัวข้อขนาดกะทัดรัดเหมาะกับหน้าจอมือถือ
+st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์</div>", unsafe_allow_html=True)
+st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
 PROGRESS_FILE = "audit_progress.csv"
 header_row = 4
@@ -149,19 +178,30 @@ else:
     valid_mask = df[target_column].apply(is_valid_asset_code)
 
     # --- 📊 ส่วนสรุปผลภาพรวม ---
-    st.subheader("📊 สรุปสถานะการตรวจสอบประจำปี (ข้อมูลกลางแบบ Real-time)")
-    
     valid_df = df[valid_mask]
     total_items = len(valid_df)
     checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
     unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
-    progress_pct = int((checked_items / total_items) * 100) if total_items > 0 else 0
+    
+    progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
+    # ให้แถบสีเขียวมีความกว้างขั้นต่ำ 1.5% เมื่อมีการตรวจอย่างน้อย 1 ชิ้น เพื่อให้มองเห็นสีเขียวได้ชัดเจน
+    bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
     
     normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
     damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] != 'ปกติ')])
 
-    st.write(f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)")
-    st.progress(progress_pct / 100)
+    st.markdown(
+        f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)",
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        f"""
+        <div class="progress-wrapper">
+            <div class="progress-fill" style="width: {bar_width}%;"></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("📦 ทั้งหมด", total_items)
@@ -170,7 +210,7 @@ else:
     m4.metric("✅ สภาพปกติ", normal_count)
     m5.metric("⚠️ ชำรุด/อื่นๆ", damaged_count)
 
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
     # --- 🗂️ เมนูหลัก ---
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
@@ -213,7 +253,6 @@ else:
         
         st.markdown("### 📝 บันทึก/อัปเดตผลการตรวจสอบ")
         with st.container(border=True):
-            # แบ่งครึ่งซ้าย-ขวา: ซ้ายเลือกหมายเลขครุภัณฑ์ ขวาแสดงแถบสถานะสีเขียว/แดงทันที
             col_item, col_badge = st.columns([1.2, 1.8])
             with col_item:
                 item_target = st.selectbox(
@@ -239,7 +278,6 @@ else:
                 with c3:
                     inspector_name = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)")
                 
-                # แบ่งคอลัมน์ปุ่มกดบันทึกด้านซ้าย และช่องสถานะการบันทึกด้านขวา
                 btn_col, save_status_col = st.columns([1.2, 1.8])
                 with btn_col:
                     submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้", use_container_width=True)
@@ -317,7 +355,6 @@ else:
                         with mc3:
                             mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
                         
-                        # แบ่งคอลัมน์ปุ่มกดบันทึกด้านซ้าย และช่องสถานะการบันทึกด้านขวา (สำหรับโหมดมือถือ)
                         m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
                         with m_btn_col:
                             mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที", use_container_width=True)
