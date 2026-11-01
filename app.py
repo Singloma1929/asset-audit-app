@@ -172,7 +172,7 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """ฝังกล้องสแกน QR Code แบบดึงค่ามาใส่ Streamlit Component โดยตรง ไม่รีเฟรชหน้าเว็บ"""
+    """ฝังกล้องสแกน QR Code สด ส่งรหัสเข้า Component โดยตรงโดยไม่รีเฟรชหน้าเว็บ"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
@@ -193,10 +193,10 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                document.getElementById("qr-result").innerText = "✅ สแกนสำเร็จ: " + code;
+                document.getElementById("qr-result").innerText = "✅ สแกนพบรหัส: " + code;
                 html5QrCode.stop();
                 
-                // ส่งรหัสไปที่ Streamlit ผ่าน window.parent postMessage
+                // ส่งค่ารหัสไปที่ Streamlit ทันทีแบบไร้รอยต่อ
                 const data = { type: "streamlit:setComponentValue", value: code };
                 window.parent.postMessage(data, "*");
             },
@@ -285,7 +285,7 @@ else:
         
         col_search, col_filter = st.columns([3, 1])
         with col_search:
-            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:", key="search_tab1")
+            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:")
         with col_filter:
             status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"])
         
@@ -362,29 +362,29 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        # จัดการ Session State สำหรับช่องค้นหาด่วน
+        # จัดการ Session State สำหรับรับค่ารหัสที่สแกนมาใส่ช่องค้นหาด่วนทันทีโดยไม่รีเฟรชหน้า
         if "mob_search_val" not in st.session_state:
             query_params = st.query_params
             st.session_state.mob_search_val = query_params.get("scan", "")
-
+            
         left_col, right_col = st.columns([1, 1.5])
         
         with left_col:
             with st.container(border=True):
                 st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
                 
-                # เรียกกล้องสแกน QR (เมื่อสแกนได้ ค่าจะถูกส่งกลับมาอัปเดตช่องค้นหาทันทีโดยไม่โหลดหน้าใหม่)
+                # แสดงกล้องสแกน QR Code และดึงรหัสมาใส่ช่องค้นหาอัตโนมัติ
                 scanned_code = render_live_qr_scanner()
                 if scanned_code:
                     st.session_state.mob_search_val = str(scanned_code)
                 
-                # ช่องพิมพ์ค้นหาด่วน
+                # ช่องพิมพ์ค้นหาด่วน (รับค่าจากกล้องหรือพิมพ์เอง กด Enter เพื่อค้นหา)
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
                     value=st.session_state.mob_search_val,
                     key="mob_input_box"
                 )
-                # ซิงค์ค่ากลับเข้า session state
+                # ซิงค์ค่าปัจจุบันเก็บไว้ใน session_state
                 st.session_state.mob_search_val = mobile_search
 
         with right_col:
