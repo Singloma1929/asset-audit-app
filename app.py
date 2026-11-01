@@ -172,7 +172,7 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """ฝังกล้องสแกน QR Code สด ส่งรหัสเข้า Component โดยตรงโดยไม่รีเฟรชหน้าเว็บ"""
+    """ฝังกล้องสแกน QR Code สด ส่งรหัสเข้าช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
@@ -193,10 +193,10 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                document.getElementById("qr-result").innerText = "✅ สแกนพบรหัส: " + code;
+                document.getElementById("qr-result").innerText = "✅ สแกนสำเร็จ: " + code;
                 html5QrCode.stop();
                 
-                // ส่งค่ารหัสไปที่ Streamlit ทันทีแบบไร้รอยต่อ
+                // ส่งรหัสไปที่ Streamlit component โดยตรง
                 const data = { type: "streamlit:setComponentValue", value: code };
                 window.parent.postMessage(data, "*");
             },
@@ -207,7 +207,7 @@ def render_live_qr_scanner():
         });
     </script>
     """
-    return components.html(scanner_html, height=340, scrolling=False)
+    return components.html(scanner_html, height=320, scrolling=False)
 
 df, target_column = get_shared_data()
 
@@ -362,7 +362,7 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        # จัดการ Session State สำหรับรับค่ารหัสที่สแกนมาใส่ช่องค้นหาด่วนทันทีโดยไม่รีเฟรชหน้า
+        # จัดการ Session State สำหรับช่องค้นหาด่วน
         if "mob_search_val" not in st.session_state:
             query_params = st.query_params
             st.session_state.mob_search_val = query_params.get("scan", "")
@@ -373,18 +373,33 @@ else:
             with st.container(border=True):
                 st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
                 
-                # แสดงกล้องสแกน QR Code และดึงรหัสมาใส่ช่องค้นหาอัตโนมัติ
-                scanned_code = render_live_qr_scanner()
+                # ปุ่มกดเปิด/ปิดกล้อง (กลับมาใช้ปุ่มกดตามเดิมตามความต้องการ)
+                if "open_scanner" not in st.session_state:
+                    st.session_state.open_scanner = False
+                
+                btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
+                if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
+                    st.session_state.open_scanner = not st.session_state.open_scanner
+                    st.rerun()
+                
+                # หากเปิดกล้อง ให้แสดงหน้าจอสแกนสด
+                scanned_code = None
+                if st.session_state.open_scanner:
+                    scanned_code = render_live_qr_scanner()
+                
+                # ถังสแกนพบรหัส นำรหัสไปใส่ในตัวแปร session_state ของช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ
                 if scanned_code:
                     st.session_state.mob_search_val = str(scanned_code)
-                
-                # ช่องพิมพ์ค้นหาด่วน (รับค่าจากกล้องหรือพิมพ์เอง กด Enter เพื่อค้นหา)
+                    st.session_state.open_scanner = False
+                    st.rerun()
+
+                # ช่องพิมพ์ค้นหาด่วน (แสดงหมายเลขที่สแกนมา หรือพิมพ์เอง)
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
                     value=st.session_state.mob_search_val,
                     key="mob_input_box"
                 )
-                # ซิงค์ค่าปัจจุบันเก็บไว้ใน session_state
+                # อัปเดตค่าล่าสุดตามที่ผู้ใช้พิมพ์
                 st.session_state.mob_search_val = mobile_search
 
         with right_col:
@@ -458,7 +473,7 @@ else:
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
             else:
-                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือส่องกล้อง QR Code ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
+                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดปุ่ม **'📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ'** ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
