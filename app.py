@@ -172,7 +172,7 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """ฝังกล้องสแกน QR Code สด ส่งรหัสเข้าช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ"""
+    """คอมโพเนนต์สแกน QR Code สดพร้อมส่งค่ากลับเข้า Streamlit ทันที"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
@@ -182,6 +182,12 @@ def render_live_qr_scanner():
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
+        function sendDataToStreamlit(code) {
+            // ส่งค่าผ่าน Streamlit Custom Component API
+            const data = { type: "streamlit:setComponentValue", value: code };
+            window.parent.postMessage(data, "*");
+        }
+
         const html5QrCode = new Html5Qrcode("qr-reader");
         const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
         
@@ -195,10 +201,7 @@ def render_live_qr_scanner():
                 }
                 document.getElementById("qr-result").innerText = "✅ สแกนสำเร็จ: " + code;
                 html5QrCode.stop();
-                
-                // ส่งรหัสไปที่ Streamlit component โดยตรง
-                const data = { type: "streamlit:setComponentValue", value: code };
-                window.parent.postMessage(data, "*");
+                sendDataToStreamlit(code);
             },
             (errorMessage) => {}
         ).catch((err) => {
@@ -373,7 +376,6 @@ else:
             with st.container(border=True):
                 st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
                 
-                # ปุ่มกดเปิด/ปิดกล้อง (กลับมาใช้ปุ่มกดตามเดิมตามความต้องการ)
                 if "open_scanner" not in st.session_state:
                     st.session_state.open_scanner = False
                 
@@ -382,24 +384,23 @@ else:
                     st.session_state.open_scanner = not st.session_state.open_scanner
                     st.rerun()
                 
-                # หากเปิดกล้อง ให้แสดงหน้าจอสแกนสด
+                # หากเปิดกล้อง ให้เรียกใช้งานคอมโพเนนต์สแกนสด
                 scanned_code = None
                 if st.session_state.open_scanner:
                     scanned_code = render_live_qr_scanner()
                 
-                # ถังสแกนพบรหัส นำรหัสไปใส่ในตัวแปร session_state ของช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ
+                # นำรหัสที่สแกนได้ไปใส่ในช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ
                 if scanned_code:
                     st.session_state.mob_search_val = str(scanned_code)
                     st.session_state.open_scanner = False
                     st.rerun()
 
-                # ช่องพิมพ์ค้นหาด่วน (แสดงหมายเลขที่สแกนมา หรือพิมพ์เอง)
+                # ช่องพิมพ์ค้นหาด่วน
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
                     value=st.session_state.mob_search_val,
                     key="mob_input_box"
                 )
-                # อัปเดตค่าล่าสุดตามที่ผู้ใช้พิมพ์
                 st.session_state.mob_search_val = mobile_search
 
         with right_col:
