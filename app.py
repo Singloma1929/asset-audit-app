@@ -6,7 +6,7 @@ import os
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from streamlit_camera_input_live import camera_input_live
+import numpy as np
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
@@ -170,6 +170,25 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
+def decode_qr_image(image_bytes):
+    """ฟังก์ชันถอดรหัส QR Code จากภาพถ่ายโดยใช้ OpenCV (พร้อมระบบกันแอปพัง)"""
+    try:
+        import cv2
+        img_pil = Image.open(image_bytes).convert('RGB')
+        img_np = np.array(img_pil)
+        detector = cv2.QRCodeDetector()
+        val, _, _ = detector.detectAndDecode(img_np)
+        if val:
+            if "?scan=" in val:
+                return val.split("?scan=")[-1].strip()
+            return val.strip()
+        return None
+    except ImportError:
+        st.error("⚠️ ระบบกำลังติดตั้งตัวอ่าน QR Code (opencv-python-headless) กรุณากด Reboot App บน Streamlit Cloud ครับ")
+        return None
+    except Exception:
+        return None
+
 df, target_column = get_shared_data()
 
 if df is None:
@@ -321,45 +340,42 @@ else:
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
-        st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยพิมพ์ค้นหาด่วน หรือกดเปิดกล้องสแกน QR Code จากป้ายครุภัณฑ์")
+        st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
         query_params = st.query_params
-        default_mob_search = query_params.get("scan", "")
-        
-        # จัดเลย์เอาต์ซ้าย-ขวา สำหรับโหมดมือถือ
-        left_col, right_col = st.columns([1, 1.2])
+        if "scanned_code" not in st.session_state:
+            st.session_state.scanned_code = query_params.get("scan", "")
+            
+        # แบ่งฝั่งซ้าย (ช่องค้นหา + ปุ่มสแกน QR) และฝั่งขวา (ข้อมูลครุภัณฑ์ + บันทึกผล)
+        left_col, right_col = st.columns([1, 1.5])
         
         with left_col:
-            st.markdown("#### 🔎 ค้นหา / สแกนรหัส")
-            mobile_search = st.text_input("พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์:", value=default_mob_search, key="mob_input")
-            
-            with st.expander("📷 เปิดกล้องสแกน QR Code หน้างาน", expanded=False):
-                st.write("ส่องกล้องไปที่ QR Code บนป้ายครุภัณฑ์เพื่อดึงหมายเลขรหัสอัตโนมัติ")
-                # ใช้ camera_input_live สำหรับสตรีมกล้องหน้างาน
-                camera_image = camera_input_live(key="qr_camera")
-                if camera_image is not None:
-                    try:
-                        # ถอดรหัส QR จากภาพที่ถ่ายผ่านกล้อง
-                        img_cv = Image.open(camera_image)
-                        from cv2 import QRCodeDetector
-                        import numpy as np
-                        detector = QRCodeDetector()
-                        val, _, _ = detector.detectAndDecode(np.array(img_cv))
-                        if val:
-                            # ดึงเฉพาะพารามิเตอร์ ?scan= ถ้าลิงก์มาจาก QR Code ของระบบ
-                            if "?scan=" in val:
-                                scanned_code = val.split("?scan=")[-1]
-                            else:
-                                scanned_code = val.strip()
-                            st.success(f"🎯 สแกนสำเร็จ: {scanned_code}")
-                            mobile_search = scanned_code
+            with st.container(border=True):
+                st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
+                
+                # ช่องพิมพ์ค้นหาอยู่ทางซ้ายมือขนาดกะทัดรัด
+                mobile_search = st.text_input(
+                    "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
+                    value=st.session_state.scanned_code,
+                    key="mob_input_box"
+                )
+                
+                # ปุ่มเปิด/ปิดโหมดกล้องสแกน QR Code
+                use_camera = st.toggle("📷 กดเปิดกล้องสแกน QR Code หมายเลขพัสดุ", value=False)
+                
+                if use_camera:
+                    st.caption("ส่องกล้องไปที่ป้าย QR Code แล้วกดปุ่มถ่ายภาพเพื่อสแกนทันที")
+                    cam_pic = st.camera_input("สแกน QR Code", label_visibility="collapsed")
+                    if cam_pic is not None:
+                        decoded_text = decode_qr_image(cam_pic)
+                        if decoded_text:
+                            st.session_state.scanned_code = decoded_text
+                            mobile_search = decoded_text
+                            st.success(f"✅ สแกนพบรหัส: **{decoded_text}**")
                         else:
-                            st.info("ℹ️ ยังไม่พบ QR Code ในมุมกล้อง ลองขยับเข้าใกล้ป้ายอีกนิดครับ")
-                    except Exception as e:
-                        st.warning("⚠️ ไม่สามารถอ่านโค้ดจากภาพได้ กรุณาลองใหม่อีกครั้ง หรือพิมพ์ค้นหาแทนครับ")
+                            st.warning("⚠️ ไม่พบ QR Code ในภาพ กรุณาขยับกล้องให้ชัดขึ้นแล้วกดถ่ายใหม่ครับ")
 
         with right_col:
-            st.markdown("#### 📋 ผลลัพธ์และบันทึกข้อมูล")
             if mobile_search:
                 matched_mob = df[valid_mask][df[valid_mask][target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
                 
@@ -369,31 +385,34 @@ else:
                     
                     st.markdown("### 📝 บันทึกผลการตรวจหน้างาน")
                     with st.container(border=True):
-                        mob_target = st.selectbox(
-                            "เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก",
-                            options=matched_mob[target_column].tolist(),
-                            key="mob_item_select"
-                        )
-                        
-                        mob_row = df[df[target_column].astype(str) == str(mob_target)].iloc[0]
-                        render_status_badge(
-                            mob_row['สถานะการตรวจ'],
-                            mob_row['สภาพครุภัณฑ์'],
-                            mob_row['ผู้ตรวจ']
-                        )
+                        m_col_item, m_col_badge = st.columns([1.2, 1.8])
+                        with m_col_item:
+                            mob_target = st.selectbox(
+                                "เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก",
+                                options=matched_mob[target_column].tolist(),
+                                key="mob_item_select"
+                            )
+                        with m_col_badge:
+                            st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
+                            mob_row = df[df[target_column].astype(str) == str(mob_target)].iloc[0]
+                            render_status_badge(
+                                mob_row['สถานะการตรวจ'],
+                                mob_row['สภาพครุภัณฑ์'],
+                                mob_row['ผู้ตรวจ']
+                            )
 
                         with st.form("mobile_quick_audit", border=False):
-                            mc1, mc2 = st.columns(2)
+                            mc1, mc2, mc3 = st.columns(3)
                             with mc1:
                                 mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0, key="m_cond")
                             with mc2:
                                 mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0, key="m_status")
+                            with mc3:
+                                mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
                             
-                            mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
-                            
-                            m_btn_col, m_save_status_col = st.columns([1, 1])
+                            m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
                             with m_btn_col:
-                                mob_submit = st.form_submit_button(label="💾 บันทึกผล", use_container_width=True)
+                                mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที", use_container_width=True)
                             with m_save_status_col:
                                 render_save_status_badge(
                                     mob_row['สถานะการตรวจ'],
@@ -402,9 +421,9 @@ else:
                             
                             if mob_submit:
                                 if mob_status == "โปรดระบุสถานะ":
-                                    st.error("⚠️ กรุณาเลือกสถานะการตรวจก่อนครับ")
+                                    st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
                                 elif mob_status == "ตรวจแล้ว" and mob_condition == "โปรดระบุสภาพ":
-                                    st.error("⚠️ กรุณาเลือกสภาพครุภัณฑ์ก่อนครับ")
+                                    st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
                                 else:
                                     thai_time = datetime.utcnow() + timedelta(hours=7)
                                     current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
@@ -422,12 +441,12 @@ else:
                                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
                                     
                                     save_progress(df, target_column)
-                                    st.success(f"✅ บันทึกหมายเลข {mob_target} เรียบร้อย!")
+                                    st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
                                     st.rerun()
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
             else:
-                st.info("👉 กรุณาพิมพ์หมายเลขครุภัณฑ์ หรือกดเปิดกล้องสแกน QR Code ด้านซ้ายเพื่อเริ่มตรวจนับ")
+                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดสวิตช์ **'เปิดกล้องสแกน QR Code'** ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
