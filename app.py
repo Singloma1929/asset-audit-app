@@ -172,12 +172,12 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """ฝังกล้องสแกน QR Code สดด้วยโครงสร้างที่ทำงานได้ชัวร์ พร้อมส่งรหัสเข้าช่องค้นหา"""
+    """ฝังกล้องสแกน QR Code สด ส่งรหัสไปกรอกในช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
         <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
-            กำลังเปิดกล้อง... กรุณากดอนุญาต (Allow) หากเบราว์เซอร์ถามสิทธิ์การใช้กล้อง
+            กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
         </div>
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -193,23 +193,29 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                document.getElementById("qr-result").innerText = "✅ สแกนพบรหัส: " + code + " (นำลงช่องค้นหาแล้ว)";
+                document.getElementById("qr-result").innerText = "✅ สแกนสำเร็จ: " + code;
                 html5QrCode.stop();
                 
-                // ส่งรหัสไปใส่ที่ช่องค้นหาผ่านพารามิเตอร์ URL โดยพ่วงแท็ก #tab2 เพื่อให้หน้าจอไม่เด้งหลุดไปไหน
-                const baseUrl = window.parent.location.origin + window.parent.location.pathname;
-                window.parent.location.href = baseUrl + "?scan=" + encodeURIComponent(code);
+                // ค้นหาช่อง input ของ Streamlit แล้วยัดค่ารหัสลงไปโดยตรงทันที
+                const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+                for (let input of inputs) {
+                    if (input.value !== undefined) {
+                        // จำลองการพิมพ์ค่าลงในช่องค้นหาของ Streamlit
+                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, "value").set;
+                        nativeInputValueSetter.call(input, code);
+                        input.dispatchEvent(new window.parent.Event('input', { bubbles: true }));
+                        break;
+                    }
+                }
             },
-            (errorMessage) => {
-                // กำลังส่องหา QR Code
-            }
+            (errorMessage) => {}
         ).catch((err) => {
             document.getElementById("qr-result").style.color = "#dc2626";
-            document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดเปิดเว็บผ่าน Chrome/Safari และกดอนุญาตให้ใช้กล้อง)";
+            document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดอนุญาตให้ใช้กล้องในเบราว์เซอร์)";
         });
     </script>
     """
-    components.html(scanner_html, height=360)
+    return components.html(scanner_html, height=360)
 
 df, target_column = get_shared_data()
 
@@ -379,7 +385,6 @@ else:
                     key="mob_input_box"
                 )
                 
-                # ปุ่มกดเปิดกล้องสแกน QR Code แบบ Real-time ที่ใช้งานได้จริงของคุณ
                 if "open_scanner" not in st.session_state:
                     st.session_state.open_scanner = False
                 
