@@ -172,21 +172,17 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """สแกน QR Code แล้วสร้างปุ่ม Copy รหัสลงคลิปบอร์ดทันทีเพื่อให้นำไปวางในช่องค้นหา"""
+    """สแกน QR Code แล้ว Copy ลงช่องค้นหาอัตโนมัติทันทีโดยไม่ต้องกดวางเอง"""
     scanner_html = """
-    <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
+    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
-        <div id="qr-result" style="margin-top: 10px; font-family: sans-serif; font-size: 15px; color: #16a34a; font-weight: bold;">
+        <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
             กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
         </div>
-        <div id="copy-container" style="margin-top: 10px; display: none;">
-            <input type="text" id="scanned-code-box" readonly style="width: 70%; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #22c55e; border-radius: 6px; background: #fff;" />
-            <button onclick="copyToClipboard()" style="padding: 8px 14px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-left: 5px;">📋 คัดลอก</button>
-        </div>
+        <input type="text" id="hidden-clipboard" style="opacity: 0; position: absolute; pointer-events: none;" />
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
-        let detectedCode = "";
         const html5QrCode = new Html5Qrcode("qr-reader");
         const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
         
@@ -198,38 +194,34 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                detectedCode = code;
-                document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
-                
-                // แสดงกล่องข้อความและปุ่มกดคัดลอก
-                document.getElementById("scanned-code-box").value = code;
-                document.getElementById("copy-container").style.display = "block";
-                
-                // พยายามคัดลอกลงคลิปบอร์ดอัตโนมัติ
-                navigator.clipboard.writeText(code).then(() => {
-                    document.getElementById("qr-result").innerText = "✅ คัดลอกรหัส " + code + " ลงคลิปบอร์ดแล้ว! (นำไปวางในช่องค้นหาได้เลย)";
-                }).catch(err => {
-                    // หากเบราว์เซอร์บล็อก ให้ผู้ใช้กดปุ่มคัดลอกเอง
-                });
-                
+                document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span> (วางลงช่องค้นหาแล้ว)";
                 html5QrCode.stop().catch(err => {});
+                
+                // คัดลอกลงคลิปบอร์ด
+                navigator.clipboard.writeText(code).catch(err => {});
+
+                // ค้นหาช่อง input ของ Streamlit แล้วหยอดค่ารหัสลงไปอัตโนมัติทันที
+                const doc = window.parent.document;
+                const inputs = doc.querySelectorAll('input[type="text"]');
+                for (let input of inputs) {
+                    // ตรวจสอบว่าเป็นช่องค้นหาพัสดุ
+                    const parentContainer = input.closest('.stTextInput');
+                    if (parentContainer && parentContainer.innerText.includes("หมายเลขครุภัณฑ์")) {
+                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, "value").set;
+                        nativeInputValueSetter.call(input, code);
+                        input.dispatchEvent(new window.parent.Event('input', { bubbles: true }));
+                        break;
+                    }
+                }
             },
             (errorMessage) => {}
         ).catch((err) => {
             document.getElementById("qr-result").style.color = "#dc2626";
             document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดอนุญาตให้ใช้กล้องในเบราว์เซอร์)";
         });
-
-        function copyToClipboard() {
-            const copyText = document.getElementById("scanned-code-box");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999);
-            navigator.clipboard.writeText(copyText.value);
-            alert("คัดลอกหมายเลข " + copyText.value + " เรียบร้อย! นำไปวางในช่องค้นหาได้เลยครับ");
-        }
     </script>
     """
-    return components.html(scanner_html, height=390)
+    return components.html(scanner_html, height=340)
 
 df, target_column = get_shared_data()
 
@@ -402,7 +394,7 @@ else:
                     render_live_qr_scanner()
 
                 mobile_search = st.text_input(
-                    "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่ (แตะค้างแล้วกด 'วาง'):",
+                    "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
                     value="",
                     key="mob_input_box"
                 )
