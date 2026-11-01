@@ -171,20 +171,24 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def decode_qr_image(image_bytes):
-    """ฟังก์ชันถอดรหัส QR Code จากภาพถ่ายโดยใช้ OpenCV (พร้อมระบบกันแอปพัง)"""
+    """ฟังก์ชันถอดรหัส QR Code จากภาพถ่ายโดยใช้ OpenCV (ปรับความคมชัดช่วยอ่านบนมือถือ)"""
     try:
         import cv2
         img_pil = Image.open(image_bytes).convert('RGB')
         img_np = np.array(img_pil)
         detector = cv2.QRCodeDetector()
         val, _, _ = detector.detectAndDecode(img_np)
+        if not val:
+            # ลองแปลงเป็นขาวดำเพื่อช่วยให้อ่านภาพถ่ายจากมือถือได้แม่นยำขึ้น
+            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            val, _, _ = detector.detectAndDecode(gray)
         if val:
             if "?scan=" in val:
                 return val.split("?scan=")[-1].strip()
             return val.strip()
         return None
     except ImportError:
-        st.error("⚠️ ระบบกำลังติดตั้งตัวอ่าน QR Code (opencv-python-headless) กรุณากด Reboot App บน Streamlit Cloud ครับ")
+        st.error("⚠️ ระบบกำลังติดตั้งตัวอ่าน QR Code กรุณากด Reboot App บน Streamlit Cloud ครับ")
         return None
     except Exception:
         return None
@@ -346,26 +350,40 @@ else:
         if "scanned_code" not in st.session_state:
             st.session_state.scanned_code = query_params.get("scan", "")
             
-        # แบ่งฝั่งซ้าย (ช่องค้นหา + ปุ่มสแกน QR) และฝั่งขวา (ข้อมูลครุภัณฑ์ + บันทึกผล)
         left_col, right_col = st.columns([1, 1.5])
         
         with left_col:
             with st.container(border=True):
                 st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
                 
-                # ช่องพิมพ์ค้นหาอยู่ทางซ้ายมือขนาดกะทัดรัด
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
                     value=st.session_state.scanned_code,
                     key="mob_input_box"
                 )
                 
-                # ปุ่มเปิด/ปิดโหมดกล้องสแกน QR Code
-                use_camera = st.toggle("📷 กดเปิดกล้องสแกน QR Code หมายเลขพัสดุ", value=False)
+                # ตัวเลือกโหมดกล้อง 2 รูปแบบ เพื่อแก้ปัญหามือถือบางรุ่นบล็อกกล้องเว็บ
+                scan_mode = st.radio(
+                    "เลือกวิธีสแกน QR Code:",
+                    ["ปิดกล้อง", "📸 กดถ่ายภาพ QR ด้วยกล้องมือถือ (แนะนำสำหรับมือถือ)", "🎥 เปิดกล้องสดบนหน้าเว็บ"],
+                    index=0
+                )
                 
-                if use_camera:
-                    st.caption("ส่องกล้องไปที่ป้าย QR Code แล้วกดปุ่มถ่ายภาพเพื่อสแกนทันที")
-                    cam_pic = st.camera_input("สแกน QR Code", label_visibility="collapsed")
+                if scan_mode == "📸 กดถ่ายภาพ QR ด้วยกล้องมือถือ (แนะนำสำหรับมือถือ)":
+                    st.caption("กดปุ่ม **Browse files** ด้านล่าง แล้วเลือก **'ถ่ายภาพ' (Camera)** จากมือถือเพื่อสแกน QR Code ได้ทันที (ใช้ได้แม้เปิดผ่าน LINE)")
+                    uploaded_qr = st.file_uploader("ถ่ายรูปป้าย QR Code", type=['png', 'jpg', 'jpeg', 'webp'], label_visibility="collapsed")
+                    if uploaded_qr is not None:
+                        decoded_text = decode_qr_image(uploaded_qr)
+                        if decoded_text:
+                            st.session_state.scanned_code = decoded_text
+                            mobile_search = decoded_text
+                            st.success(f"✅ สแกนพบรหัส: **{decoded_text}**")
+                        else:
+                            st.warning("⚠️ อ่าน QR Code ไม่สำเร็จ กรุณาถ่ายให้เห็นกรอบ QR Code ชัดๆ อีกครั้งครับ")
+                            
+                elif scan_mode == "🎥 เปิดกล้องสดบนหน้าเว็บ":
+                    st.caption("💡 หากกล้องไม่ขึ้นบนมือถือ กรุณาเปิดเว็บผ่านแอป Chrome/Safari และกด 'อนุญาต (Allow)' การใช้กล้องครับ")
+                    cam_pic = st.camera_input("สแกน QR Code")
                     if cam_pic is not None:
                         decoded_text = decode_qr_image(cam_pic)
                         if decoded_text:
@@ -446,7 +464,7 @@ else:
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
             else:
-                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดสวิตช์ **'เปิดกล้องสแกน QR Code'** ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
+                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือเลือกวิธี **สแกน QR Code** ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
