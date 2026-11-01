@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 import re
@@ -170,28 +171,45 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
-def decode_qr_image(image_bytes):
-    """ฟังก์ชันถอดรหัส QR Code จากภาพถ่ายโดยใช้ OpenCV (ปรับความคมชัดช่วยอ่านบนมือถือ)"""
-    try:
-        import cv2
-        img_pil = Image.open(image_bytes).convert('RGB')
-        img_np = np.array(img_pil)
-        detector = cv2.QRCodeDetector()
-        val, _, _ = detector.detectAndDecode(img_np)
-        if not val:
-            # ลองแปลงเป็นขาวดำเพื่อช่วยให้อ่านภาพถ่ายจากมือถือได้แม่นยำขึ้น
-            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-            val, _, _ = detector.detectAndDecode(gray)
-        if val:
-            if "?scan=" in val:
-                return val.split("?scan=")[-1].strip()
-            return val.strip()
-        return None
-    except ImportError:
-        st.error("⚠️ ระบบกำลังติดตั้งตัวอ่าน QR Code กรุณากด Reboot App บน Streamlit Cloud ครับ")
-        return None
-    except Exception:
-        return None
+def render_live_qr_scanner():
+    """ฝังกล้องสแกน QR Code สดด้วย html5-qrcode ส่องปุ๊บดึงรหัสเข้าช่องค้นหาทันที"""
+    scanner_html = """
+    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
+        <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
+        <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
+            กำลังเปิดกล้อง... กรุณากดอนุญาต (Allow) หากเบราว์เซอร์ถามสิทธิ์การใช้กล้อง
+        </div>
+    </div>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script>
+        const html5QrCode = new Html5Qrcode("qr-reader");
+        const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
+        
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            qrConfig,
+            (decodedText, decodedResult) => {
+                let code = decodedText.trim();
+                if (code.includes("?scan=")) {
+                    code = code.split("?scan=").pop().trim();
+                }
+                document.getElementById("qr-result").innerText = "✅ สแกนพบรหัส: " + code + " (กำลังดึงข้อมูล...)";
+                html5QrCode.stop();
+                
+                // ส่งค่ารหัสที่สแกนได้กลับไปที่ URL พารามิเตอร์ ?scan= ของหน้าหลักโดยตรง
+                const baseUrl = window.parent.location.origin + window.parent.location.pathname;
+                window.parent.location.href = baseUrl + "?scan=" + encodeURIComponent(code);
+            },
+            (errorMessage) => {
+                // กำลังส่องหา QR Code
+            }
+        ).catch((err) => {
+            document.getElementById("qr-result").style.color = "#dc2626";
+            document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดเปิดเว็บผ่าน Chrome/Safari และกดอนุญาตให้ใช้กล้อง)";
+        });
+    </script>
+    """
+    components.html(scanner_html, height=360)
 
 df, target_column = get_shared_data()
 
@@ -347,8 +365,7 @@ else:
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
         query_params = st.query_params
-        if "scanned_code" not in st.session_state:
-            st.session_state.scanned_code = query_params.get("scan", "")
+        default_mob_search = query_params.get("scan", "")
             
         left_col, right_col = st.columns([1, 1.5])
         
@@ -358,40 +375,21 @@ else:
                 
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
-                    value=st.session_state.scanned_code,
+                    value=default_mob_search,
                     key="mob_input_box"
                 )
                 
-                # ตัวเลือกโหมดกล้อง 2 รูปแบบ เพื่อแก้ปัญหามือถือบางรุ่นบล็อกกล้องเว็บ
-                scan_mode = st.radio(
-                    "เลือกวิธีสแกน QR Code:",
-                    ["ปิดกล้อง", "📸 กดถ่ายภาพ QR ด้วยกล้องมือถือ (แนะนำสำหรับมือถือ)", "🎥 เปิดกล้องสดบนหน้าเว็บ"],
-                    index=0
-                )
+                # ปุ่มกดเปิดกล้องสแกน QR Code แบบ Real-time (ส่องปุ๊บติดปั๊บ ไม่ต้องกดถ่ายรูป)
+                if "open_scanner" not in st.session_state:
+                    st.session_state.open_scanner = False
                 
-                if scan_mode == "📸 กดถ่ายภาพ QR ด้วยกล้องมือถือ (แนะนำสำหรับมือถือ)":
-                    st.caption("กดปุ่ม **Browse files** ด้านล่าง แล้วเลือก **'ถ่ายภาพ' (Camera)** จากมือถือเพื่อสแกน QR Code ได้ทันที (ใช้ได้แม้เปิดผ่าน LINE)")
-                    uploaded_qr = st.file_uploader("ถ่ายรูปป้าย QR Code", type=['png', 'jpg', 'jpeg', 'webp'], label_visibility="collapsed")
-                    if uploaded_qr is not None:
-                        decoded_text = decode_qr_image(uploaded_qr)
-                        if decoded_text:
-                            st.session_state.scanned_code = decoded_text
-                            mobile_search = decoded_text
-                            st.success(f"✅ สแกนพบรหัส: **{decoded_text}**")
-                        else:
-                            st.warning("⚠️ อ่าน QR Code ไม่สำเร็จ กรุณาถ่ายให้เห็นกรอบ QR Code ชัดๆ อีกครั้งครับ")
-                            
-                elif scan_mode == "🎥 เปิดกล้องสดบนหน้าเว็บ":
-                    st.caption("💡 หากกล้องไม่ขึ้นบนมือถือ กรุณาเปิดเว็บผ่านแอป Chrome/Safari และกด 'อนุญาต (Allow)' การใช้กล้องครับ")
-                    cam_pic = st.camera_input("สแกน QR Code")
-                    if cam_pic is not None:
-                        decoded_text = decode_qr_image(cam_pic)
-                        if decoded_text:
-                            st.session_state.scanned_code = decoded_text
-                            mobile_search = decoded_text
-                            st.success(f"✅ สแกนพบรหัส: **{decoded_text}**")
-                        else:
-                            st.warning("⚠️ ไม่พบ QR Code ในภาพ กรุณาขยับกล้องให้ชัดขึ้นแล้วกดถ่ายใหม่ครับ")
+                btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
+                if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
+                    st.session_state.open_scanner = not st.session_state.open_scanner
+                    st.rerun()
+                
+                if st.session_state.open_scanner:
+                    render_live_qr_scanner()
 
         with right_col:
             if mobile_search:
@@ -459,12 +457,13 @@ else:
                                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
                                     
                                     save_progress(df, target_column)
+                                    st.session_state.open_scanner = False
                                     st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
                                     st.rerun()
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
             else:
-                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือเลือกวิธี **สแกน QR Code** ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
+                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดปุ่ม **'📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ'** ทางด้านซ้ายมือได้เลยครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
