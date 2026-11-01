@@ -172,16 +172,21 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """สแกน QR Code แล้วส่งรหัสไปที่ช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ"""
+    """สแกน QR Code แล้วสร้างปุ่ม Copy รหัสลงคลิปบอร์ดทันทีเพื่อให้นำไปวางในช่องค้นหา"""
     scanner_html = """
-    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
+    <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
-        <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
+        <div id="qr-result" style="margin-top: 10px; font-family: sans-serif; font-size: 15px; color: #16a34a; font-weight: bold;">
             กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
+        </div>
+        <div id="copy-container" style="margin-top: 10px; display: none;">
+            <input type="text" id="scanned-code-box" readonly style="width: 70%; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #22c55e; border-radius: 6px; background: #fff;" />
+            <button onclick="copyToClipboard()" style="padding: 8px 14px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-left: 5px;">📋 คัดลอก</button>
         </div>
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
+        let detectedCode = "";
         const html5QrCode = new Html5Qrcode("qr-reader");
         const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
         
@@ -193,24 +198,38 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
+                detectedCode = code;
                 document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
-                html5QrCode.stop().catch(err => {});
                 
-                // คัดลอกข้อความลงคลิปบอร์ดอัตโนมัติเผื่อกรณีผู้ใช้ต้องการกดวาง
-                navigator.clipboard.writeText(code).catch(err => {});
-
-                // ส่งค่ารหัสไปที่พารามิเตอร์ URL เพื่อดึงข้อมูลขึ้นมาแสดงผลทันทีโดยไม่ต้องพิมพ์ซ้ำ
-                const baseUrl = window.parent.location.origin + window.parent.location.pathname;
-                window.parent.location.href = baseUrl + "?scan=" + encodeURIComponent(code);
+                // แสดงกล่องข้อความและปุ่มกดคัดลอก
+                document.getElementById("scanned-code-box").value = code;
+                document.getElementById("copy-container").style.display = "block";
+                
+                // พยายามคัดลอกลงคลิปบอร์ดอัตโนมัติ
+                navigator.clipboard.writeText(code).then(() => {
+                    document.getElementById("qr-result").innerText = "✅ คัดลอกรหัส " + code + " ลงคลิปบอร์ดแล้ว! (นำไปวางในช่องค้นหาได้เลย)";
+                }).catch(err => {
+                    // หากเบราว์เซอร์บล็อก ให้ผู้ใช้กดปุ่มคัดลอกเอง
+                });
+                
+                html5QrCode.stop().catch(err => {});
             },
             (errorMessage) => {}
         ).catch((err) => {
             document.getElementById("qr-result").style.color = "#dc2626";
             document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดอนุญาตให้ใช้กล้องในเบราว์เซอร์)";
         });
+
+        function copyToClipboard() {
+            const copyText = document.getElementById("scanned-code-box");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(copyText.value);
+            alert("คัดลอกหมายเลข " + copyText.value + " เรียบร้อย! นำไปวางในช่องค้นหาได้เลยครับ");
+        }
     </script>
     """
-    return components.html(scanner_html, height=340)
+    return components.html(scanner_html, height=390)
 
 df, target_column = get_shared_data()
 
@@ -365,9 +384,6 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        query_params = st.query_params
-        default_mob_search = query_params.get("scan", "")
-            
         left_col, right_col = st.columns([1, 1.5])
         
         with left_col:
@@ -386,8 +402,8 @@ else:
                     render_live_qr_scanner()
 
                 mobile_search = st.text_input(
-                    "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
-                    value=default_mob_search,
+                    "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่ (แตะค้างแล้วกด 'วาง'):",
+                    value="",
                     key="mob_input_box"
                 )
 
