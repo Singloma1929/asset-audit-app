@@ -172,14 +172,13 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """สแกน QR Code แล้ว Copy ลงช่องค้นหาอัตโนมัติทันทีโดยไม่ต้องกดวางเอง"""
+    """สแกน QR Code แล้วส่งรหัสไปที่ช่องค้นหาทันทีโดยไม่รีเฟรชหน้าเว็บ"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
         <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
             กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
         </div>
-        <input type="text" id="hidden-clipboard" style="opacity: 0; position: absolute; pointer-events: none;" />
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
@@ -194,25 +193,15 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span> (วางลงช่องค้นหาแล้ว)";
+                document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
                 html5QrCode.stop().catch(err => {});
                 
-                // คัดลอกลงคลิปบอร์ด
+                // คัดลอกข้อความลงคลิปบอร์ดอัตโนมัติเผื่อกรณีผู้ใช้ต้องการกดวาง
                 navigator.clipboard.writeText(code).catch(err => {});
 
-                // ค้นหาช่อง input ของ Streamlit แล้วหยอดค่ารหัสลงไปอัตโนมัติทันที
-                const doc = window.parent.document;
-                const inputs = doc.querySelectorAll('input[type="text"]');
-                for (let input of inputs) {
-                    // ตรวจสอบว่าเป็นช่องค้นหาพัสดุ
-                    const parentContainer = input.closest('.stTextInput');
-                    if (parentContainer && parentContainer.innerText.includes("หมายเลขครุภัณฑ์")) {
-                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, "value").set;
-                        nativeInputValueSetter.call(input, code);
-                        input.dispatchEvent(new window.parent.Event('input', { bubbles: true }));
-                        break;
-                    }
-                }
+                // ส่งค่ารหัสไปที่พารามิเตอร์ URL เพื่อดึงข้อมูลขึ้นมาแสดงผลทันทีโดยไม่ต้องพิมพ์ซ้ำ
+                const baseUrl = window.parent.location.origin + window.parent.location.pathname;
+                window.parent.location.href = baseUrl + "?scan=" + encodeURIComponent(code);
             },
             (errorMessage) => {}
         ).catch((err) => {
@@ -376,6 +365,9 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
+        query_params = st.query_params
+        default_mob_search = query_params.get("scan", "")
+            
         left_col, right_col = st.columns([1, 1.5])
         
         with left_col:
@@ -395,7 +387,7 @@ else:
 
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
-                    value="",
+                    value=default_mob_search,
                     key="mob_input_box"
                 )
 
