@@ -172,12 +172,12 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """ฝังกล้องสแกน QR Code สดด้วย html5-qrcode ส่องปุ๊บดึงรหัสเข้าช่องค้นหาทันที"""
+    """ฝังกล้องสแกน QR Code แบบดึงค่ามาใส่ Streamlit Component โดยตรง ไม่รีเฟรชหน้าเว็บ"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
         <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
-            กำลังเปิดกล้อง... กรุณากดอนุญาต (Allow) หากเบราว์เซอร์ถามสิทธิ์การใช้กล้อง
+            กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
         </div>
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -193,23 +193,21 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                document.getElementById("qr-result").innerText = "✅ สแกนพบรหัส: " + code + " (กำลังดึงข้อมูล...)";
+                document.getElementById("qr-result").innerText = "✅ สแกนสำเร็จ: " + code;
                 html5QrCode.stop();
                 
-                // ส่งค่ารหัสที่สแกนได้กลับไปที่ URL พารามิเตอร์ ?scan= ของหน้าหลักโดยตรง
-                const baseUrl = window.parent.location.origin + window.parent.location.pathname;
-                window.parent.location.href = baseUrl + "?scan=" + encodeURIComponent(code);
+                // ส่งรหัสไปที่ Streamlit ผ่าน window.parent postMessage
+                const data = { type: "streamlit:setComponentValue", value: code };
+                window.parent.postMessage(data, "*");
             },
-            (errorMessage) => {
-                // กำลังส่องหา QR Code
-            }
+            (errorMessage) => {}
         ).catch((err) => {
             document.getElementById("qr-result").style.color = "#dc2626";
-            document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดเปิดเว็บผ่าน Chrome/Safari และกดอนุญาตให้ใช้กล้อง)";
+            document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดอนุญาตให้ใช้กล้องในเบราว์เซอร์)";
         });
     </script>
     """
-    components.html(scanner_html, height=360)
+    return components.html(scanner_html, height=340, scrolling=False)
 
 df, target_column = get_shared_data()
 
@@ -287,7 +285,7 @@ else:
         
         col_search, col_filter = st.columns([3, 1])
         with col_search:
-            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:")
+            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:", key="search_tab1")
         with col_filter:
             status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"])
         
@@ -364,32 +362,30 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        query_params = st.query_params
-        default_mob_search = query_params.get("scan", "")
-            
+        # จัดการ Session State สำหรับช่องค้นหาด่วน
+        if "mob_search_val" not in st.session_state:
+            query_params = st.query_params
+            st.session_state.mob_search_val = query_params.get("scan", "")
+
         left_col, right_col = st.columns([1, 1.5])
         
         with left_col:
             with st.container(border=True):
                 st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
                 
+                # เรียกกล้องสแกน QR (เมื่อสแกนได้ ค่าจะถูกส่งกลับมาอัปเดตช่องค้นหาทันทีโดยไม่โหลดหน้าใหม่)
+                scanned_code = render_live_qr_scanner()
+                if scanned_code:
+                    st.session_state.mob_search_val = str(scanned_code)
+                
+                # ช่องพิมพ์ค้นหาด่วน
                 mobile_search = st.text_input(
                     "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่:",
-                    value=default_mob_search,
+                    value=st.session_state.mob_search_val,
                     key="mob_input_box"
                 )
-                
-                # ปุ่มกดเปิดกล้องสแกน QR Code แบบ Real-time (ส่องปุ๊บติดปั๊บ ไม่ต้องกดถ่ายรูป)
-                if "open_scanner" not in st.session_state:
-                    st.session_state.open_scanner = False
-                
-                btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
-                if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
-                    st.session_state.open_scanner = not st.session_state.open_scanner
-                    st.rerun()
-                
-                if st.session_state.open_scanner:
-                    render_live_qr_scanner()
+                # ซิงค์ค่ากลับเข้า session state
+                st.session_state.mob_search_val = mobile_search
 
         with right_col:
             if mobile_search:
@@ -457,13 +453,12 @@ else:
                                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
                                     
                                     save_progress(df, target_column)
-                                    st.session_state.open_scanner = False
                                     st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
                                     st.rerun()
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
             else:
-                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดปุ่ม **'📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ'** ทางด้านซ้ายมือได้เลยครับ")
+                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือส่องกล้อง QR Code ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
