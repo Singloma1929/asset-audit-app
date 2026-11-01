@@ -17,14 +17,15 @@ st.set_page_config(
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 2rem;
+        padding-top: 2.5rem;
         padding-bottom: 2rem;
     }
     .app-header {
         font-size: 28px;
         font-weight: 700;
         color: #1f2937;
-        margin-bottom: 8px;
+        margin-top: 10px;
+        margin-bottom: 12px;
     }
     .stAlert {
         padding: 4px 12px !important;
