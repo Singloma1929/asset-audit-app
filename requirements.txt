@@ -5,4 +5,4 @@ qrcode
 Pillow
 python-calamine
 xlrd
-
+streamlit-camera-input-live
