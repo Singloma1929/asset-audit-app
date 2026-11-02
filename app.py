@@ -126,7 +126,7 @@ def get_shared_data():
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_col = potential_cols[0] if potential_cols else df.columns[0]
 
-    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
     for col in audit_cols:
         if col not in df.columns:
             if col == 'สถานะการตรวจ':
@@ -150,7 +150,7 @@ def get_shared_data():
     return df, target_col
 
 def save_progress(df, target_col):
-    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
     try:
         checked_df = df[df['สถานะการตรวจ'] == 'ตรวจแล้ว'][[target_col] + audit_cols]
         checked_df.to_csv(PROGRESS_FILE, index=False, encoding='utf-8-sig')
@@ -201,16 +201,12 @@ def render_live_qr_scanner():
                 detectedCode = code;
                 document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
                 
-                // แสดงกล่องข้อความและปุ่มกดคัดลอก
                 document.getElementById("scanned-code-box").value = code;
                 document.getElementById("copy-container").style.display = "block";
                 
-                // พยายามคัดลอกลงคลิปบอร์ดอัตโนมัติ
                 navigator.clipboard.writeText(code).then(() => {
                     document.getElementById("qr-result").innerText = "✅ คัดลอกรหัส " + code + " ลงคลิปบอร์ดแล้ว! (นำไปวางในช่องค้นหาได้เลย)";
-                }).catch(err => {
-                    // หากเบราว์เซอร์บล็อก ให้ผู้ใช้กดปุ่มคัดลอกเอง
-                });
+                }).catch(err => {});
                 
                 html5QrCode.stop().catch(err => {});
             },
@@ -307,9 +303,9 @@ else:
         
         col_search, col_filter = st.columns([3, 1])
         with col_search:
-            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:")
+            search_query = st.text_input("พิมพ์ค้นหาจากชื่อ, หมายเลขครุภัณฑ์ หรือข้อมูลอื่นๆ:", key="search_main_1")
         with col_filter:
-            status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"])
+            status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
         
         display_df = df[valid_mask]
         if status_filter != "ทั้งหมด":
@@ -338,12 +334,14 @@ else:
                 )
 
             with st.form("audit_form_main", border=False):
-                c1, c2, c3 = st.columns(3)
+                c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     new_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0)
                 with c2:
                     new_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0)
                 with c3:
+                    note_text = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)")
+                with c4:
                     inspector_name = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)")
                 
                 btn_col, save_status_col = st.columns([1.2, 1.8])
@@ -368,11 +366,13 @@ else:
                         if new_status == "ยังไม่ตรวจ":
                             df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
                             df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
+                            df.loc[mask, 'หมายเหตุ'] = '-'
                             df.loc[mask, 'ผู้ตรวจ'] = '-'
                             df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
                         else:
                             df.loc[mask, 'สภาพครุภัณฑ์'] = new_condition
                             df.loc[mask, 'สถานะการตรวจ'] = new_status
+                            df.loc[mask, 'หมายเหตุ'] = note_text.strip() if note_text.strip() else '-'
                             df.loc[mask, 'ผู้ตรวจ'] = inspector_name if inspector_name.strip() else '-'
                             df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
                         
@@ -434,12 +434,14 @@ else:
                             )
 
                         with st.form("mobile_quick_audit", border=False):
-                            mc1, mc2, mc3 = st.columns(3)
+                            mc1, mc2, mc3, mc4 = st.columns(4)
                             with mc1:
                                 mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0, key="m_cond")
                             with mc2:
                                 mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0, key="m_status")
                             with mc3:
+                                mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", key="m_note")
+                            with mc4:
                                 mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
                             
                             m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
@@ -464,11 +466,13 @@ else:
                                     if mob_status == "ยังไม่ตรวจ":
                                         df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
                                         df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
+                                        df.loc[mask, 'หมายเหตุ'] = '-'
                                         df.loc[mask, 'ผู้ตรวจ'] = '-'
                                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
                                     else:
                                         df.loc[mask, 'สภาพครุภัณฑ์'] = mob_condition
                                         df.loc[mask, 'สถานะการตรวจ'] = mob_status
+                                        df.loc[mask, 'หมายเหตุ'] = mob_note.strip() if mob_note.strip() else '-'
                                         df.loc[mask, 'ผู้ตรวจ'] = mob_inspector if mob_inspector.strip() else '-'
                                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
                                     
@@ -532,7 +536,7 @@ else:
 
     with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
-        st.write("ข้อมูลการตรวจสอบทั้งหมด (รวม 4 ช่องสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
+        st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
         output_buffer = BytesIO()
         df[valid_mask].to_excel(output_buffer, index=False)
