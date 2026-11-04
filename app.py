@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import re
 import os
+import sqlite3
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -92,7 +93,7 @@ st.markdown("""
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์</div>", unsafe_allow_html=True)
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
-PROGRESS_FILE = "audit_progress.csv"
+DB_PATH = "db.sqlite3"
 header_row = 4
 
 @st.cache_resource
@@ -134,28 +135,53 @@ def get_shared_data():
             else:
                 df[col] = '-'
 
-    if os.path.exists(PROGRESS_FILE):
+    # ดึงข้อมูลจากฐานข้อมูล SQLite ของ Django
+    if os.path.exists(DB_PATH):
         try:
-            saved_df = pd.read_csv(PROGRESS_FILE, dtype=str)
+            conn = sqlite3.connect(DB_PATH)
+            query = "SELECT asset_code, condition, status, note, inspector, updated_at FROM core_assetauditrecord"
+            saved_df = pd.read_sql(query, conn)
+            conn.close()
+
             for _, row in saved_df.iterrows():
-                code = str(row[target_col])
+                code = str(row['asset_code'])
                 mask = df[target_col].astype(str) == code
                 if mask.any():
-                    for col in audit_cols:
-                        if col in saved_df.columns:
-                            df.loc[mask, col] = row[col]
-        except Exception:
-            pass
+                    df.loc[mask, 'สภาพครุภัณฑ์'] = row['condition']
+                    df.loc[mask, 'สถานะการตรวจ'] = row['status']
+                    df.loc[mask, 'หมายเหตุ'] = row['note'] if pd.notna(row['note']) else '-'
+                    df.loc[mask, 'ผู้ตรวจ'] = row['inspector'] if pd.notna(row['inspector']) else '-'
+                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = row['updated_at']
+        except Exception as e:
+            st.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดข้อมูลจากฐานข้อมูล: {e}")
 
     return df, target_col
 
-def save_progress(df, target_col):
-    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+def save_progress_to_db(asset_code, condition, status, note, inspector, timestamp):
+    """บันทึกหรืออัปเดตผลการตรวจลงใน SQLite ทันทีแบบถาวร"""
     try:
-        checked_df = df[df['สถานะการตรวจ'] == 'ตรวจแล้ว'][[target_col] + audit_cols]
-        checked_df.to_csv(PROGRESS_FILE, index=False, encoding='utf-8-sig')
-    except Exception:
-        pass
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id FROM core_assetauditrecord WHERE asset_code = ?", (str(asset_code),))
+        row = cursor.fetchone()
+        
+        if row:
+            cursor.execute("""
+                UPDATE core_assetauditrecord 
+                SET condition = ?, status = ?, note = ?, inspector = ?, updated_at = ?
+                WHERE asset_code = ?
+            """, (condition, status, note, inspector, timestamp, str(asset_code)))
+        else:
+            cursor.execute("""
+                INSERT INTO core_assetauditrecord (asset_code, condition, status, note, inspector, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (str(asset_code), condition, status, note, inspector, timestamp))
+            
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"⚠️ ไม่สามารถบันทึกลงฐานข้อมูลได้: {e}")
 
 def render_status_badge(status_val, cond_val, inspector_val):
     if status_val == 'ตรวจแล้ว':
@@ -230,7 +256,7 @@ def render_live_qr_scanner():
 df, target_column = get_shared_data()
 
 if df is None:
-    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บนระบบ โปรดอัปโหลดไฟล์ขึ้นไปไว้ที่หน้าหลักของ GitHub ครับ")
+    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บนระบบ โปรดตรวจสอบว่าไฟล์อยู่ในโฟลเดอร์เดียวกันครับ")
 else:
     def is_valid_asset_code(val):
         if pd.isna(val):
@@ -364,20 +390,35 @@ else:
                         
                         mask = df[target_column].astype(str) == str(item_target)
                         if new_status == "ยังไม่ตรวจ":
-                            df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
-                            df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
-                            df.loc[mask, 'หมายเหตุ'] = '-'
-                            df.loc[mask, 'ผู้ตรวจ'] = '-'
-                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
+                            save_condition = '-'
+                            save_status = 'ยังไม่ตรวจ'
+                            save_note = '-'
+                            save_inspector = '-'
+                            save_time = '-'
                         else:
-                            df.loc[mask, 'สภาพครุภัณฑ์'] = new_condition
-                            df.loc[mask, 'สถานะการตรวจ'] = new_status
-                            df.loc[mask, 'หมายเหตุ'] = note_text.strip() if note_text.strip() else '-'
-                            df.loc[mask, 'ผู้ตรวจ'] = inspector_name if inspector_name.strip() else '-'
-                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
+                            save_condition = new_condition
+                            save_status = new_status
+                            save_note = note_text.strip() if note_text.strip() else '-'
+                            save_inspector = inspector_name if inspector_name.strip() else '-'
+                            save_time = current_time
                         
-                        save_progress(df, target_column)
-                        st.success(f"✅ บันทึกผลรายการ {item_target} เรียบร้อยแล้ว!")
+                        # บันทึกค่าลงใน Dataframe ชั่วคราวบนหน้าจอ
+                        df.loc[mask, 'สภาพครุภัณฑ์'] = save_condition
+                        df.loc[mask, 'สถานะการตรวจ'] = save_status
+                        df.loc[mask, 'หมายเหตุ'] = save_note
+                        df.loc[mask, 'ผู้ตรวจ'] = save_inspector
+                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
+                        
+                        # บันทึกลงฐานข้อมูล SQLite ของ Django ทันที
+                        save_progress_to_db(
+                            asset_code=item_target,
+                            condition=save_condition,
+                            status=save_status,
+                            note=save_note,
+                            inspector=save_inspector,
+                            timestamp=save_time
+                        )
+                        st.success(f"✅ บันทึกผลรายการ {item_target} ลงฐานข้อมูลเรียบร้อยแล้ว!")
                         st.rerun()
 
     with main_tab2:
@@ -464,21 +505,36 @@ else:
                                     
                                     mask = df[target_column].astype(str) == str(mob_target)
                                     if mob_status == "ยังไม่ตรวจ":
-                                        df.loc[mask, 'สภาพครุภัณฑ์'] = '-'
-                                        df.loc[mask, 'สถานะการตรวจ'] = 'ยังไม่ตรวจ'
-                                        df.loc[mask, 'หมายเหตุ'] = '-'
-                                        df.loc[mask, 'ผู้ตรวจ'] = '-'
-                                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = '-'
+                                        m_condition = '-'
+                                        m_status_val = 'ยังไม่ตรวจ'
+                                        m_note_val = '-'
+                                        m_inspector_val = '-'
+                                        m_time_val = '-'
                                     else:
-                                        df.loc[mask, 'สภาพครุภัณฑ์'] = mob_condition
-                                        df.loc[mask, 'สถานะการตรวจ'] = mob_status
-                                        df.loc[mask, 'หมายเหตุ'] = mob_note.strip() if mob_note.strip() else '-'
-                                        df.loc[mask, 'ผู้ตรวจ'] = mob_inspector if mob_inspector.strip() else '-'
-                                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = current_time
+                                        m_condition = mob_condition
+                                        m_status_val = mob_status
+                                        m_note_val = mob_note.strip() if mob_note.strip() else '-'
+                                        m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
+                                        m_time_val = current_time
                                     
-                                    save_progress(df, target_column)
+                                    # บันทึกค่าลงใน Dataframe ชั่วคราวบนหน้าจอ
+                                    df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
+                                    df.loc[mask, 'สถานะการตรวจ'] = m_status_val
+                                    df.loc[mask, 'หมายเหตุ'] = m_note_val
+                                    df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
+                                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
+                                    
+                                    # บันทึกลงฐานข้อมูล SQLite ของ Django ทันที
+                                    save_progress_to_db(
+                                        asset_code=mob_target,
+                                        condition=m_condition,
+                                        status=m_status_val,
+                                        note=m_note_val,
+                                        inspector=m_inspector_val,
+                                        timestamp=m_time_val
+                                    )
                                     st.session_state.open_scanner = False
-                                    st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} สำเร็จเรียบร้อย!")
+                                    st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลงฐานข้อมูลสำเร็จเรียบร้อย!")
                                     st.rerun()
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
