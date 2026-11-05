@@ -1,14 +1,23 @@
+import sys
+import os
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 import re
-import os
 import sqlite3
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import numpy as np
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
@@ -98,17 +107,16 @@ header_row = 4
 
 @st.cache_resource
 def get_shared_data():
-    if os.path.exists("default_asset.xlsx"):
-        default_file = "default_asset.xlsx"
-    elif os.path.exists("default_asset.xls"):
-        default_file = "default_asset.xls"
-    else:
-        return None, None
+    default_file = resource_path("default_asset.xlsx")
+    if not os.path.exists(default_file):
+        default_file = resource_path("default_asset.xls")
+        if not os.path.exists(default_file):
+            return None, None
 
     if default_file.endswith('.csv'):
         raw_df = pd.read_csv(default_file, header=None)
     else:
-        raw_df = pd.read_excel(default_file, header=None)
+        raw_df = pd.read_excel(default_file, header=None, engine='openpyxl')
     
     top_cols = raw_df.iloc[header_row].fillna('').astype(str)
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
@@ -135,10 +143,10 @@ def get_shared_data():
             else:
                 df[col] = '-'
 
-    # ดึงข้อมูลจากฐานข้อมูล SQLite ของ Django
-    if os.path.exists(DB_PATH):
+    db_file_path = resource_path(DB_PATH)
+    if os.path.exists(db_file_path):
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = sqlite3.connect(db_file_path)
             query = "SELECT asset_code, condition, status, note, inspector, updated_at FROM core_assetauditrecord"
             saved_df = pd.read_sql(query, conn)
             conn.close()
@@ -158,9 +166,9 @@ def get_shared_data():
     return df, target_col
 
 def save_progress_to_db(asset_code, condition, status, note, inspector, timestamp):
-    """บันทึกหรืออัปเดตผลการตรวจลงใน SQLite ทันทีแบบถาวร"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        db_file_path = resource_path(DB_PATH)
+        conn = sqlite3.connect(db_file_path)
         cursor = conn.cursor()
         
         cursor.execute("SELECT id FROM core_assetauditrecord WHERE asset_code = ?", (str(asset_code),))
@@ -198,7 +206,6 @@ def render_save_status_badge(status_val, timestamp_val):
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_live_qr_scanner():
-    """สแกน QR Code แล้วสร้างปุ่ม Copy รหัสลงคลิปบอร์ดทันทีเพื่อให้นำไปวางในช่องค้นหา"""
     scanner_html = """
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
@@ -268,7 +275,6 @@ else:
 
     valid_mask = df[target_column].apply(is_valid_asset_code)
 
-    # --- 📊 ส่วนสรุปผลภาพรวม ---
     valid_df = df[valid_mask]
     total_items = len(valid_df)
     checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
@@ -302,7 +308,6 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🗂️ เมนูหลัก ---
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
         "🔍 ค้นหา & บันทึกผล", 
         "📱 ตรวจนับด้วยมือถือ (ยิงรหัส/ค้นหาด่วน)",
@@ -402,14 +407,12 @@ else:
                             save_inspector = inspector_name if inspector_name.strip() else '-'
                             save_time = current_time
                         
-                        # บันทึกค่าลงใน Dataframe ชั่วคราวบนหน้าจอ
                         df.loc[mask, 'สภาพครุภัณฑ์'] = save_condition
                         df.loc[mask, 'สถานะการตรวจ'] = save_status
                         df.loc[mask, 'หมายเหตุ'] = save_note
                         df.loc[mask, 'ผู้ตรวจ'] = save_inspector
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
                         
-                        # บันทึกลงฐานข้อมูล SQLite ของ Django ทันที
                         save_progress_to_db(
                             asset_code=item_target,
                             condition=save_condition,
@@ -517,14 +520,12 @@ else:
                                         m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
                                         m_time_val = current_time
                                     
-                                    # บันทึกค่าลงใน Dataframe ชั่วคราวบนหน้าจอ
                                     df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
                                     df.loc[mask, 'สถานะการตรวจ'] = m_status_val
                                     df.loc[mask, 'หมายเหตุ'] = m_note_val
                                     df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
                                     df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
                                     
-                                    # บันทึกลงฐานข้อมูล SQLite ของ Django ทันที
                                     save_progress_to_db(
                                         asset_code=mob_target,
                                         condition=m_condition,
