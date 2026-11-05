@@ -6,4 +6,4 @@ Pillow
 python-calamine
 xlrd
 opencv-python-headless
-
+supabase
