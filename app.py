@@ -5,19 +5,26 @@ import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 import re
-import sqlite3
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import numpy as np
+from supabase import create_client, Client
 
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
+# --- 🔌 ตั้งค่าการเชื่อมต่อ Supabase Cloud ผ่าน st.secrets ---
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+
+@st.cache_resource
+def init_supabase():
     try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
+        if SUPABASE_URL and SUPABASE_KEY:
+            return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        return None
+    return None
+
+supabase: Client = init_supabase()
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
@@ -99,24 +106,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # หัวข้อโปรเจกต์
-st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์</div>", unsafe_allow_html=True)
+st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Cloud Version)</div>", unsafe_allow_html=True)
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
-DB_PATH = "db.sqlite3"
 header_row = 4
 
 @st.cache_resource
 def get_shared_data():
-    default_file = resource_path("default_asset.xlsx")
-    if not os.path.exists(default_file):
-        default_file = resource_path("default_asset.xls")
-        if not os.path.exists(default_file):
-            return None, None
+    if os.path.exists("default_asset.xlsx"):
+        default_file = "default_asset.xlsx"
+    elif os.path.exists("default_asset.xls"):
+        default_file = "default_asset.xls"
+    else:
+        return None, None
 
     if default_file.endswith('.csv'):
         raw_df = pd.read_csv(default_file, header=None)
     else:
-        raw_df = pd.read_excel(default_file, header=None, engine='openpyxl')
+        try:
+            raw_df = pd.read_excel(default_file, header=None, engine='openpyxl')
+        except Exception:
+            raw_df = pd.read_excel(default_file, header=None, engine='xlrd')
     
     top_cols = raw_df.iloc[header_row].fillna('').astype(str)
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
@@ -143,53 +153,45 @@ def get_shared_data():
             else:
                 df[col] = '-'
 
-    db_file_path = resource_path(DB_PATH)
-    if os.path.exists(db_file_path):
+    # ดึงข้อมูลจาก Supabase Cloud
+    if supabase:
         try:
-            conn = sqlite3.connect(db_file_path)
-            query = "SELECT asset_code, condition, status, note, inspector, updated_at FROM core_assetauditrecord"
-            saved_df = pd.read_sql(query, conn)
-            conn.close()
-
-            for _, row in saved_df.iterrows():
-                code = str(row['asset_code'])
-                mask = df[target_col].astype(str) == code
-                if mask.any():
-                    df.loc[mask, 'สภาพครุภัณฑ์'] = row['condition']
-                    df.loc[mask, 'สถานะการตรวจ'] = row['status']
-                    df.loc[mask, 'หมายเหตุ'] = row['note'] if pd.notna(row['note']) else '-'
-                    df.loc[mask, 'ผู้ตรวจ'] = row['inspector'] if pd.notna(row['inspector']) else '-'
-                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = row['updated_at']
+            response = supabase.table("core_assetauditrecord").select("*").execute()
+            saved_data = response.data
+            
+            if saved_data:
+                saved_df = pd.DataFrame(saved_data)
+                for _, row in saved_df.iterrows():
+                    code = str(row['asset_code'])
+                    mask = df[target_col].astype(str) == code
+                    if mask.any():
+                        df.loc[mask, 'สภาพครุภัณฑ์'] = row['condition']
+                        df.loc[mask, 'สถานะการตรวจ'] = row['status']
+                        df.loc[mask, 'หมายเหตุ'] = row['note'] if pd.notna(row['note']) else '-'
+                        df.loc[mask, 'ผู้ตรวจ'] = row['inspector'] if pd.notna(row['inspector']) else '-'
+                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = row['updated_at']
         except Exception as e:
-            st.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดข้อมูลจากฐานข้อมูล: {e}")
+            st.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Supabase: {e}")
 
     return df, target_col
 
-def save_progress_to_db(asset_code, condition, status, note, inspector, timestamp):
+def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp):
+    """บันทึกหรืออัปเดตผลการตรวจลงใน Supabase บน Cloud ทันที"""
+    if not supabase:
+        st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
+        return
     try:
-        db_file_path = resource_path(DB_PATH)
-        conn = sqlite3.connect(db_file_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT id FROM core_assetauditrecord WHERE asset_code = ?", (str(asset_code),))
-        row = cursor.fetchone()
-        
-        if row:
-            cursor.execute("""
-                UPDATE core_assetauditrecord 
-                SET condition = ?, status = ?, note = ?, inspector = ?, updated_at = ?
-                WHERE asset_code = ?
-            """, (condition, status, note, inspector, timestamp, str(asset_code)))
-        else:
-            cursor.execute("""
-                INSERT INTO core_assetauditrecord (asset_code, condition, status, note, inspector, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (str(asset_code), condition, status, note, inspector, timestamp))
-            
-        conn.commit()
-        conn.close()
+        data_payload = {
+            "asset_code": str(asset_code),
+            "condition": condition,
+            "status": status,
+            "note": note,
+            "inspector": inspector,
+            "updated_at": timestamp
+        }
+        supabase.table("core_assetauditrecord").upsert(data_payload, on_conflict="asset_code").execute()
     except Exception as e:
-        st.error(f"⚠️ ไม่สามารถบันทึกลงฐานข้อมูลได้: {e}")
+        st.error(f"⚠️ ไม่สามารถบันทึกลง Supabase ได้: {e}")
 
 def render_status_badge(status_val, cond_val, inspector_val):
     if status_val == 'ตรวจแล้ว':
@@ -263,7 +265,7 @@ def render_live_qr_scanner():
 df, target_column = get_shared_data()
 
 if df is None:
-    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บนระบบ โปรดตรวจสอบว่าไฟล์อยู่ในโฟลเดอร์เดียวกันครับ")
+    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บน GitHub โปรดอัปโหลดไฟล์ข้อมูลงสานเข้า GitHub ด้วยครับ")
 else:
     def is_valid_asset_code(val):
         if pd.isna(val):
@@ -413,7 +415,8 @@ else:
                         df.loc[mask, 'ผู้ตรวจ'] = save_inspector
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
                         
-                        save_progress_to_db(
+                        # บันทึกขึ้น Supabase Cloud ทันที
+                        save_progress_to_supabase(
                             asset_code=item_target,
                             condition=save_condition,
                             status=save_status,
@@ -421,7 +424,7 @@ else:
                             inspector=save_inspector,
                             timestamp=save_time
                         )
-                        st.success(f"✅ บันทึกผลรายการ {item_target} ลงฐานข้อมูลเรียบร้อยแล้ว!")
+                        st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
                         st.rerun()
 
     with main_tab2:
@@ -526,7 +529,8 @@ else:
                                     df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
                                     df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
                                     
-                                    save_progress_to_db(
+                                    # บันทึกขึ้น Supabase Cloud ทันที
+                                    save_progress_to_supabase(
                                         asset_code=mob_target,
                                         condition=m_condition,
                                         status=m_status_val,
@@ -535,7 +539,7 @@ else:
                                         timestamp=m_time_val
                                     )
                                     st.session_state.open_scanner = False
-                                    st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลงฐานข้อมูลสำเร็จเรียบร้อย!")
+                                    st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
                                     st.rerun()
                 else:
                     st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
