@@ -339,46 +339,44 @@ else:
     ]
 
     with main_tab1:
-
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
-
         
-
-        # จัดแบ่งเป็น 3 ช่อง: ช่องค้นหา (กว้าง 2), กรองสภาพ (กว้าง 1.5), กรองสถานะ (กว้าง 1)
-
+        # จัดแบ่งเป็น 3 ช่อง: ช่องค้นหา, กรองสภาพ, กรองสถานะ
         col_search, col_cond_filter, col_status_filter = st.columns([2, 1.5, 1])
-
         with col_search:
-
             search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์...", key="search_main_1")
-
         with col_cond_filter:
-
             condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options[1:], key="filter_cond_main_1")
-
         with col_status_filter:
-
             status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
-
         
-
         display_df = df[valid_mask]
-
         if status_filter != "ทั้งหมด":
-
             display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
-
         if condition_filter != "ทั้งหมด":
-
             display_df = display_df[display_df['สภาพครุภัณฑ์'] == condition_filter]
-
         if search_query:
-
             display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
-
 
         st.dataframe(display_df, use_container_width=True)
         
+        # --- 📥 เพิ่มปุ่มดาวน์โหลดเฉพาะรายการที่กรอง/ค้นหาด้านบน ---
+        col_dl_left, col_dl_right = st.columns([1, 2])
+        with col_dl_left:
+            filtered_buffer = BytesIO()
+            display_df.to_excel(filtered_buffer, index=False)
+            filtered_data = filtered_buffer.getvalue()
+            
+            thai_now = datetime.utcnow() + timedelta(hours=7)
+            st.download_button(
+                label="📥 ดาวน์โหลดรายการที่แสดงนี้ (Excel)",
+                data=filtered_data,
+                file_name=f"รายงานครุภัณฑ์_เฉพาะที่กรอง_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        
+        st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
         st.markdown("### 📝 บันทึก/อัปเดตผลการตรวจสอบ")
         with st.container(border=True):
             col_item, col_badge = st.columns([1.2, 1.8])
