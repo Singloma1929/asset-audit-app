@@ -359,6 +359,85 @@ else:
             display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
         st.dataframe(display_df, use_container_width=True)
+
+        # --- 📥 ปุ่มดาวน์โหลด และ ✏️ ปุ่มเปิดหน้าต่างแก้ไขข้อมูล ---
+
+        col_dl_btn, col_edit_btn, col_space = st.columns([1.2, 1.2, 2.6])
+
+        
+
+        with col_dl_btn:
+
+            filtered_buffer = BytesIO()
+
+            display_df.to_excel(filtered_buffer, index=False)
+
+            filtered_data = filtered_buffer.getvalue()
+
+            
+
+            thai_now = datetime.utcnow() + timedelta(hours=7)
+
+            st.download_button(
+
+                label="📥 ดาวน์โหลดรายการที่แสดงนี้ (Excel)",
+
+                data=filtered_data,
+
+                file_name=f"รายงานครุภัณฑ์_เฉพาะที่กรอง_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
+
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+
+                use_container_width=True
+
+            )
+
+            
+
+        with col_edit_btn:
+
+            if "show_editor_modal" not in st.session_state:
+
+                st.session_state.show_editor_modal = False
+
+                
+
+            edit_btn_label = "❌ ปิดหน้าต่างแก้ไข" if st.session_state.show_editor_modal else "✏️ แก้ไข/ปรับปรุงข้อมูล"
+
+            if st.button(edit_btn_label, use_container_width=True):
+
+                st.session_state.show_editor_modal = not st.session_state.show_editor_modal
+
+                st.rerun()
+
+
+        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง
+
+        if st.session_state.show_editor_modal:
+
+            st.markdown("---")
+
+            st.markdown("#### 🛠️ หน้าต่างแก้ไขและปรับปรุงข้อมูลตารางครุภัณฑ์")
+
+            st.info("💡 สามารถแก้ไขข้อความ ตัวเลข เพิ่มแถว หรือคลิกขวาเพื่อลบแถวได้โดยตรง จากนั้นกดปุ่มบันทึกด้านล่าง")
+
+            
+
+            with st.form("edit_table_form"):
+
+                edited_df = st.data_editor(display_df, num_rows="dynamic", use_container_width=True, key="master_data_editor")
+
+                save_changes_btn = st.form_submit_button(label="💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary")
+
+                
+
+                if save_changes_btn:
+
+                    st.success("✅ บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว!")
+
+                    st.session_state.show_editor_modal = False
+
+                    st.rerun()
         
         # --- 📥 เพิ่มปุ่มดาวน์โหลดเฉพาะรายการที่กรอง/ค้นหาด้านบน ---
         col_dl_left, col_dl_right = st.columns([1, 2])
