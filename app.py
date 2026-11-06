@@ -391,37 +391,45 @@ else:
                 st.session_state.show_editor_modal = not st.session_state.show_editor_modal
                 st.rerun()
 
-        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo นอกฟอร์มเพื่อให้ทำงานได้จริง
+        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo 1 Step ที่ใช้งานได้จริง
         if st.session_state.show_editor_modal:
             st.markdown("---")
             st.markdown("#### 🛠️ หน้าต่างแก้ไขและปรับปรุงข้อมูลตารางครุภัณฑ์")
             st.info("💡 สามารถแก้ไขข้อความ ตัวเลข ยี่ห้อ ราคา ... หรือเพิ่ม/ลบแถวได้โดยตรง (ยกเว้นช่อง สภาพครุภัณฑ์ สถานะการตรวจ ผู้ตรวจ วันเดือนปี ที่ทำการตรวจ ให้แก้ไขผ่านฟังก์ชันด้านล่าง 'บันทึก/อัปเดตผลการตรวจสอบ' แทน) จากนั้นกดปุ่มบันทึกเพื่อบันทึกบน Cloud หรือกดปุ่ม Undo เพื่อย้อนกลับ 1 ขั้นตอน")
             
-            # 1. บันทึกสถานะตั้งต้นก่อนแก้ไขไว้ทำ Undo 1 Step
-            if "table_before_edit" not in st.session_state:
-                st.session_state.table_before_edit = display_df.copy()
+            # 1. กำหนดตัวแปรจัดเก็บข้อมูลปัจจุบัน และ ข้อมูลก่อนหน้าสำหรับ Undo
+            if "editor_data_current" not in st.session_state:
+                st.session_state.editor_data_current = display_df.copy()
+            if "editor_data_undo" not in st.session_state:
+                st.session_state.editor_data_undo = display_df.copy()
+            if "editor_key_ver" not in st.session_state:
+                st.session_state.editor_key_ver = 0
 
-            # 2. ปุ่ม Undo แยกออกมาอยู่นอกฟอร์มเพื่อให้กดใช้งานได้ทันที
-            col_action_1, col_action_2, col_action_3 = st.columns([1.5, 1.5, 3])
-            with col_action_2:
+            # 2. จัดวางปุ่มบันทึก และ ปุ่ม Undo
+            col_save_btn, col_undo_btn, col_empty = st.columns([1.5, 1.5, 3])
+            
+            with col_undo_btn:
                 if st.button("↩️ Undo (ย้อนกลับ 1 Step)", use_container_width=True):
-                    if "table_before_edit" in st.session_state:
-                        # คืนค่าตารางกลับเป็นสเต็ปก่อนหน้า
-                        display_df = st.session_state.table_before_edit.copy()
-                        st.success("↩️ ย้อนกลับการแก้ไขล่าสุด 1 Step เรียบร้อยแล้ว")
-                        st.rerun()
+                    # ย้อนกลับไปใช้ข้อมูลสเต็ปก่อนหน้า และเปลี่ยนเวอร์ชัน key เพื่อรีเซ็ตหน้าตาราง
+                    st.session_state.editor_data_current = st.session_state.editor_data_undo.copy()
+                    st.session_state.editor_key_ver += 1
+                    st.toast("↩️ ย้อนกลับข้อมูล 1 Step เรียบร้อยแล้ว")
+                    st.rerun()
 
-            with st.form("edit_table_form"):
-                # ให้ผู้ใช้แก้ไขข้อมูลผ่าน st.data_editor โดยอิงจากสเต็ปปัจจุบัน
-                edited_df = st.data_editor(display_df, num_rows="dynamic", use_container_width=True, key="master_data_editor")
-                
-                col_save_btn, col_empty_space = st.columns([1.5, 4.5])
-                with col_save_btn:
-                    save_changes_btn = st.form_submit_button(label="💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary", use_container_width=True)
-                
-                if save_changes_btn:
-                    # อัปเดตเก็บประวัติสเต็ปก่อนหน้าไว้ก่อนบันทึกจริง
-                    st.session_state.table_before_edit = edited_df.copy()
+            # 3. แสดงตาราง data_editor พร้อม dynamic key เพื่อรองรับ Undo
+            current_key = f"master_data_editor_{st.session_state.editor_key_ver}"
+            edited_df = st.data_editor(
+                st.session_state.editor_data_current,
+                num_rows="dynamic",
+                use_container_width=True,
+                key=current_key
+            )
+
+            with col_save_btn:
+                if st.button("💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary", use_container_width=True):
+                    # สำรองข้อมูลปัจจุบันเก็บไว้ที่ undo ก่อนจะบันทึกค่าใหม่
+                    st.session_state.editor_data_undo = st.session_state.editor_data_current.copy()
+                    st.session_state.editor_data_current = edited_df.copy()
                     st.success("✅ บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว!")
                     st.session_state.show_editor_modal = False
                     st.rerun()
