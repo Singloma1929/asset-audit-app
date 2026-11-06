@@ -367,7 +367,6 @@ else:
     m6.metric("📦 หมดความจำเป็น", obsolete_count)
 
     condition_options = [
-        "โปรดระบุสภาพ",
         "ปกติ", 
         "ชำรุด/เสียหาย",
         "หมดความจำเป็น",
@@ -380,7 +379,7 @@ else:
         "จำหน่ายแล้ว",
         "แปรสภาพหรือทำลาย"
     ]
-    other_conditions = condition_options[4:]
+    other_conditions = condition_options[3:]
 
     with m7:
         selected_top_other = st.selectbox(
@@ -405,7 +404,6 @@ else:
     ])
     
     status_options = [
-        "โปรดระบุสถานะ",
         "ตรวจแล้ว",
         "ยังไม่ตรวจ"
     ]
@@ -417,9 +415,9 @@ else:
         with col_s1:
             search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์...", key="search_main_1")
         with col_s2:
-            condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options[1:], key="filter_cond_main_1")
+            condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options, key="filter_cond_main_1")
         with col_s3:
-            status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
+            status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด"] + status_options, key="filter_main_1")
         with col_s4:
             inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
         
@@ -476,9 +474,9 @@ else:
             with st.form("audit_form_main", border=False):
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
-                    new_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0)
+                    new_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options)
                 with c2:
-                    new_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0)
+                    new_status = st.selectbox("2. สถานะการตรวจ", status_options)
                 with c3:
                     note_text = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)")
                 with c4:
@@ -494,45 +492,40 @@ else:
                     )
                 
                 if submit_button:
-                    if new_status == "โปรดระบุสถานะ":
-                        st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
-                    elif new_status == "ตรวจแล้ว" and new_condition == "โปรดระบุสภาพ":
-                        st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
+                    thai_time = datetime.utcnow() + timedelta(hours=7)
+                    current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+                    
+                    mask = df[target_column].astype(str) == str(item_target)
+                    if new_status == "ยังไม่ตรวจ":
+                        save_condition = '-'
+                        save_status = 'ยังไม่ตรวจ'
+                        save_note = '-'
+                        save_inspector = '-'
+                        save_time = '-'
                     else:
-                        thai_time = datetime.utcnow() + timedelta(hours=7)
-                        current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
-                        
-                        mask = df[target_column].astype(str) == str(item_target)
-                        if new_status == "ยังไม่ตรวจ":
-                            save_condition = '-'
-                            save_status = 'ยังไม่ตรวจ'
-                            save_note = '-'
-                            save_inspector = '-'
-                            save_time = '-'
-                        else:
-                            save_condition = new_condition
-                            save_status = new_status
-                            save_note = note_text.strip() if note_text.strip() else '-'
-                            save_inspector = inspector_name if inspector_name.strip() else '-'
-                            save_time = current_time
-                        
-                        df.loc[mask, 'สภาพครุภัณฑ์'] = save_condition
-                        df.loc[mask, 'สถานะการตรวจ'] = save_status
-                        df.loc[mask, 'หมายเหตุ'] = save_note
-                        df.loc[mask, 'ผู้ตรวจ'] = save_inspector
-                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
-                        
-                        save_progress_to_supabase(
-                            asset_code=item_target,
-                            condition=save_condition,
-                            status=save_status,
-                            note=save_note,
-                            inspector=save_inspector,
-                            timestamp=save_time
-                        )
-                        get_shared_data.clear()
-                        st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
-                        st.rerun()
+                        save_condition = new_condition
+                        save_status = new_status
+                        save_note = note_text.strip() if note_text.strip() else '-'
+                        save_inspector = inspector_name if inspector_name.strip() else '-'
+                        save_time = current_time
+                    
+                    df.loc[mask, 'สภาพครุภัณฑ์'] = save_condition
+                    df.loc[mask, 'สถานะการตรวจ'] = save_status
+                    df.loc[mask, 'หมายเหตุ'] = save_note
+                    df.loc[mask, 'ผู้ตรวจ'] = save_inspector
+                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
+                    
+                    save_progress_to_supabase(
+                        asset_code=item_target,
+                        condition=save_condition,
+                        status=save_status,
+                        note=save_note,
+                        inspector=save_inspector,
+                        timestamp=save_time
+                    )
+                    get_shared_data.clear()
+                    st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
+                    st.rerun()
 
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
         enable_admin_tools = st.checkbox("⚙️ เปิดใช้งานโหมด: แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (สำหรับผู้ดูแลระบบ)", value=False)
@@ -633,7 +626,6 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        # จัดเรียงใหม่ให้อยู่ในแนวตั้งฝั่งเดียว (ใต้กันลงมาอย่างสวยงาม)
         with st.container(border=True):
             st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
             
@@ -679,12 +671,13 @@ else:
                             mob_row['ผู้ตรวจ']
                         )
 
+                    # แยกฟอร์มการบันทึกหน้างานออกเป็นแบบอิสระ ไม่ซ้อนทับเงื่อนไขบังคับเลือกจุกจิก
                     with st.form("mobile_quick_audit", border=False):
                         mc1, mc2, mc3, mc4 = st.columns(4)
                         with mc1:
-                            mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0, key="m_cond")
+                            mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, key="m_cond")
                         with mc2:
-                            mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0, key="m_status")
+                            mob_status = st.selectbox("2. สถานะการตรวจ", status_options, key="m_status")
                         with mc3:
                             mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", key="m_note")
                         with mc4:
@@ -700,46 +693,41 @@ else:
                             )
                         
                         if mob_submit:
-                            if mob_status == "โปรดระบุสถานะ":
-                                st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
-                            elif mob_status == "ตรวจแล้ว" and mob_condition == "โปรดระบุสภาพ":
-                                st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
+                            thai_time = datetime.utcnow() + timedelta(hours=7)
+                            current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+                            
+                            mask = df[target_column].astype(str) == str(mob_target)
+                            if mob_status == "ยังไม่ตรวจ":
+                                m_condition = '-'
+                                m_status_val = 'ยังไม่ตรวจ'
+                                m_note_val = '-'
+                                m_inspector_val = '-'
+                                m_time_val = '-'
                             else:
-                                thai_time = datetime.utcnow() + timedelta(hours=7)
-                                current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
-                                
-                                mask = df[target_column].astype(str) == str(mob_target)
-                                if mob_status == "ยังไม่ตรวจ":
-                                    m_condition = '-'
-                                    m_status_val = 'ยังไม่ตรวจ'
-                                    m_note_val = '-'
-                                    m_inspector_val = '-'
-                                    m_time_val = '-'
-                                else:
-                                    m_condition = mob_condition
-                                    m_status_val = mob_status
-                                    m_note_val = mob_note.strip() if mob_note.strip() else '-'
-                                    m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
-                                    m_time_val = current_time
-                                
-                                df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
-                                df.loc[mask, 'สถานะการตรวจ'] = m_status_val
-                                df.loc[mask, 'หมายเหตุ'] = m_note_val
-                                df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
-                                df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
-                                
-                                save_progress_to_supabase(
-                                    asset_code=mob_target,
-                                    condition=m_condition,
-                                    status=m_status_val,
-                                    note=m_note_val,
-                                    inspector=m_inspector_val,
-                                    timestamp=m_time_val
-                                )
-                                get_shared_data.clear()
-                                st.session_state.open_scanner = False
-                                st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
-                                st.rerun()
+                                m_condition = mob_condition
+                                m_status_val = mob_status
+                                m_note_val = mob_note.strip() if mob_note.strip() else '-'
+                                m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
+                                m_time_val = current_time
+                            
+                            df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
+                            df.loc[mask, 'สถานะการตรวจ'] = m_status_val
+                            df.loc[mask, 'หมายเหตุ'] = m_note_val
+                            df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
+                            df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
+                            
+                            save_progress_to_supabase(
+                                asset_code=mob_target,
+                                condition=m_condition,
+                                status=m_status_val,
+                                note=m_note_val,
+                                inspector=m_inspector_val,
+                                timestamp=m_time_val
+                            )
+                            get_shared_data.clear()
+                            st.session_state.open_scanner = False
+                            st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
+                            st.rerun()
             else:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
         else:
