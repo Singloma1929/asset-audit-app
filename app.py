@@ -226,7 +226,6 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return
     try:
-        # ดึงข้อมูล extra_dict เดิมบน Cloud มาก่อน (เพื่อไม่ให้การบันทึกผลตรวจไปทับข้อมูลครุภัณฑ์ที่เคยแก้)
         existing = supabase.table("core_assetauditrecord").select("note").eq("asset_code", str(asset_code)).execute()
         saved_extra = {}
         if existing.data:
@@ -520,101 +519,103 @@ else:
                         st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
                         st.rerun()
 
-        # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ หรือ เพิ่มรายการใหม่ (รวมช่อง 'หมายเหตุ' แล้ว) ---
+        # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ / เพิ่มรายการใหม่ (มี Checkbox ซ่อน/แสดง) ---
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
-        st.markdown("### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (ซิงค์ขึ้น Cloud)")
         
-        with st.container(border=True):
-            mode_select = st.radio(
-                "เลือกโหมดการทำงาน:",
-                ["✏️ แก้ไขข้อมูลครุภัณฑ์เดิม", "➕ เพิ่มรายการครุภัณฑ์ใหม่ขึ้น Cloud"],
-                horizontal=True
-            )
+        # 🔘 เพิ่มปุ่ม Checkbox สำหรับซ่อน/แสดงฟังก์ชันจัดการโครงสร้างข้อมูล
+        enable_admin_tools = st.checkbox("⚙️ เปิดใช้งานโหมด: แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (สำหรับผู้ดูแลระบบ)", value=False)
+        
+        if enable_admin_tools:
+            st.markdown("### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (ซิงค์ขึ้น Cloud)")
             
-            audit_cols_set = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
-            editable_cols = [c for c in df.columns if c not in audit_cols_set and c != target_column]
-
-            if mode_select == "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม":
-                edit_target = st.selectbox(
-                    f"เลือกหมายเลขครุภัณฑ์ที่ต้องการแก้ไขข้อมูล ({target_column})",
-                    options=df[valid_mask][target_column].tolist(),
-                    key="cloud_edit_item_select"
+            with st.container(border=True):
+                mode_select = st.radio(
+                    "เลือกโหมดการทำงาน:",
+                    ["✏️ แก้ไขข้อมูลครุภัณฑ์เดิม", "➕ เพิ่มรายการครุภัณฑ์ใหม่ขึ้น Cloud"],
+                    horizontal=True
                 )
-                target_row = df[df[target_column].astype(str) == str(edit_target)].iloc[0]
                 
-                with st.form("cloud_edit_asset_form"):
-                    st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ (รวมถึงช่อง 'หมายเหตุ') แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
-                    updated_values = {}
-                    cols_ui = st.columns(3)
-                    
-                    # วนลูปแสดงช่องกรอกข้อมูลเดิมทั้งหมด
-                    for idx, col_name in enumerate(editable_cols):
-                        with cols_ui[idx % 3]:
-                            updated_values[col_name] = st.text_input(
-                                col_name,
-                                value=str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
-                            )
-                    
-                    # ➕ เพิ่มช่อง "หมายเหตุ" เข้าไปต่อท้ายในฟอร์มแก้ไข
-                    current_note_val = str(target_row.get('หมายเหตุ', '-'))
-                    if current_note_val in ['nan', 'None']:
-                        current_note_val = '-'
-                    
-                    with cols_ui[(len(editable_cols)) % 3]:
-                        note_input_val = st.text_input("หมายเหตุ", value=current_note_val, key="edit_extra_note")
-                    
-                    save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
-                    if save_edit_cloud:
-                        updated_values['หมายเหตุ_ข้อมูลหลัก'] = note_input_val
-                        save_progress_to_supabase(
-                            asset_code=edit_target,
-                            condition=target_row['สภาพครุภัณฑ์'],
-                            status=target_row['สถานะการตรวจ'],
-                            note=note_input_val,
-                            inspector=target_row['ผู้ตรวจ'],
-                            timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
-                            extra_dict=updated_values
-                        )
-                        get_shared_data.clear()
-                        st.success(f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!")
-                        st.rerun()
+                audit_cols_set = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
+                editable_cols = [c for c in df.columns if c not in audit_cols_set and c != target_column]
 
-            else:
-                with st.form("cloud_add_asset_form"):
-                    st.caption("กรอกหมายเลขครุภัณฑ์ใหม่ (ต้องมีตัวเลข) และรายละเอียด รวมถึงช่อง 'หมายเหตุ' เพื่อเพิ่มเข้าสู่ระบบ Cloud ถาวร")
-                    new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข เช่น 605-012600-30099)")
+                if mode_select == "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม":
+                    edit_target = st.selectbox(
+                        f"เลือกหมายเลขครุภัณฑ์ที่ต้องการแก้ไขข้อมูล ({target_column})",
+                        options=df[valid_mask][target_column].tolist(),
+                        key="cloud_edit_item_select"
+                    )
+                    target_row = df[df[target_column].astype(str) == str(edit_target)].iloc[0]
                     
-                    new_values = {}
-                    cols_ui = st.columns(3)
-                    
-                    for idx, col_name in enumerate(editable_cols):
-                        with cols_ui[idx % 3]:
-                            new_values[col_name] = st.text_input(col_name, value="-", key=f"new_col_{idx}")
-                    
-                    # ➕ เพิ่มช่อง "หมายเหตุ" เข้าไปต่อท้ายในฟอร์มเพิ่มรายการใหม่
-                    with cols_ui[(len(editable_cols)) % 3]:
-                        new_note_val = st.text_input("หมายเหตุ", value="-", key="new_extra_note")
-
-                    save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
-                    if save_new_cloud:
-                        if not is_valid_asset_code(new_code):
-                            st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง (ต้องมีตัวเลขผสมอยู่ด้วยครับ)")
-                        elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
-                            st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
-                        else:
-                            new_values['หมายเหตุ_ข้อมูลหลัก'] = new_note_val
+                    with st.form("cloud_edit_asset_form"):
+                        st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ (รวมถึงช่อง 'หมายเหตุ') แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
+                        updated_values = {}
+                        cols_ui = st.columns(3)
+                        
+                        for idx, col_name in enumerate(editable_cols):
+                            with cols_ui[idx % 3]:
+                                updated_values[col_name] = st.text_input(
+                                    col_name,
+                                    value=str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
+                                )
+                        
+                        current_note_val = str(target_row.get('หมายเหตุ', '-'))
+                        if current_note_val in ['nan', 'None']:
+                            current_note_val = '-'
+                        
+                        with cols_ui[(len(editable_cols)) % 3]:
+                            note_input_val = st.text_input("หมายเหตุ", value=current_note_val, key="edit_extra_note")
+                        
+                        save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
+                        if save_edit_cloud:
+                            updated_values['หมายเหตุ_ข้อมูลหลัก'] = note_input_val
                             save_progress_to_supabase(
-                                asset_code=new_code.strip(),
-                                condition="-",
-                                status="ยังไม่ตรวจ",
-                                note=new_note_val,
-                                inspector="-",
-                                timestamp="-",
-                                extra_dict=new_values
+                                asset_code=edit_target,
+                                condition=target_row['สภาพครุภัณฑ์'],
+                                status=target_row['สถานะการตรวจ'],
+                                note=note_input_val,
+                                inspector=target_row['ผู้ตรวจ'],
+                                timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
+                                extra_dict=updated_values
                             )
                             get_shared_data.clear()
-                            st.success(f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code} ขึ้น Cloud สำเร็จแล้ว!")
+                            st.success(f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!")
                             st.rerun()
+
+                else:
+                    with st.form("cloud_add_asset_form"):
+                        st.caption("กรอกหมายเลขครุภัณฑ์ใหม่ (ต้องมีตัวเลข) และรายละเอียด รวมถึงช่อง 'หมายเหตุ' เพื่อเพิ่มเข้าสู่ระบบ Cloud ถาวร")
+                        new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข เช่น 605-012600-30099)")
+                        
+                        new_values = {}
+                        cols_ui = st.columns(3)
+                        
+                        for idx, col_name in enumerate(editable_cols):
+                            with cols_ui[idx % 3]:
+                                new_values[col_name] = st.text_input(col_name, value="-", key=f"new_col_{idx}")
+                        
+                        with cols_ui[(len(editable_cols)) % 3]:
+                            new_note_val = st.text_input("หมายเหตุ", value="-", key="new_extra_note")
+
+                        save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
+                        if save_new_cloud:
+                            if not is_valid_asset_code(new_code):
+                                st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง (ต้องมีตัวเลขผสมอยู่ด้วยครับ)")
+                            elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
+                                st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
+                            else:
+                                new_values['หมายเหตุ_ข้อมูลหลัก'] = new_note_val
+                                save_progress_to_supabase(
+                                    asset_code=new_code.strip(),
+                                    condition="-",
+                                    status="ยังไม่ตรวจ",
+                                    note=new_note_val,
+                                    inspector="-",
+                                    timestamp="-",
+                                    extra_dict=new_values
+                                )
+                                get_shared_data.clear()
+                                st.success(f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code} ขึ้น Cloud สำเร็จแล้ว!")
+                                st.rerun()
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
