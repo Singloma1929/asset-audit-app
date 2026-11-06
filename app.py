@@ -128,8 +128,8 @@ def get_shared_data():
         except Exception:
             raw_df = pd.read_excel(default_file, header=None, engine='xlrd')
     
-    top_cols = raw_df.iloc[header_row].fillna('').astype(str)
-    sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str)
+    top_cols = raw_df.iloc[header_row].fillna('').astype(str).str.strip()
+    sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str).str.strip()
     
     combined_columns = []
     for t, s in zip(top_cols, sub_cols):
@@ -139,7 +139,7 @@ def get_shared_data():
             combined_columns.append(t if t and t != 'None' else 'Unnamed')
 
     df = raw_df.iloc[header_row + 2:].copy()
-    df.columns = combined_columns
+    df.columns = [str(c).strip() for c in combined_columns]
     df = df.dropna(how='all').reset_index(drop=True)
 
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
@@ -153,6 +153,11 @@ def get_shared_data():
             else:
                 df[col] = '-'
 
+    # แปลงคอลัมน์ทั่วไปให้เป็น String เพื่อให้ st.data_editor พิมพ์แก้ไขได้อิสระ
+    for col in df.columns:
+        df[col] = df[col].astype(str)
+        df[col] = df[col].replace('nan', '-')
+
     # ดึงข้อมูลจาก Supabase Cloud
     if supabase:
         try:
@@ -165,11 +170,11 @@ def get_shared_data():
                     code = str(row['asset_code'])
                     mask = df[target_col].astype(str) == code
                     if mask.any():
-                        df.loc[mask, 'สภาพครุภัณฑ์'] = row['condition']
-                        df.loc[mask, 'สถานะการตรวจ'] = row['status']
-                        df.loc[mask, 'หมายเหตุ'] = row['note'] if pd.notna(row['note']) else '-'
-                        df.loc[mask, 'ผู้ตรวจ'] = row['inspector'] if pd.notna(row['inspector']) else '-'
-                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = row['updated_at']
+                        df.loc[mask, 'สภาพครุภัณฑ์'] = str(row['condition'])
+                        df.loc[mask, 'สถานะการตรวจ'] = str(row['status'])
+                        df.loc[mask, 'หมายเหตุ'] = str(row['note']) if pd.notna(row['note']) else '-'
+                        df.loc[mask, 'ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
+                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at'])
         except Exception as e:
             st.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Supabase: {e}")
 
@@ -271,7 +276,7 @@ else:
         if pd.isna(val):
             return False
         val_str = str(val).strip()
-        if val_str == '' or val_str.lower() == 'nan':
+        if val_str == '' or val_str.lower() == 'nan' or val_str == '-':
             return False
         return bool(re.search(r'\d', val_str))
 
@@ -386,19 +391,28 @@ else:
                 st.session_state.show_editor_modal = not st.session_state.show_editor_modal
                 st.rerun()
 
-        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง
+        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo
         if st.session_state.show_editor_modal:
             st.markdown("---")
             st.markdown("#### 🛠️ หน้าต่างแก้ไขและปรับปรุงข้อมูลตารางครุภัณฑ์")
-            st.info("💡 สามารถแก้ไขข้อความ ตัวเลข เพิ่มแถว หรือคลิกขวาเพื่อลบแถวได้โดยตรง จากนั้นกดปุ่มบันทึกด้านล่าง")
+            st.info("💡 สามารถแก้ไขข้อความ ตัวเลข ยี่ห้อ ราคา หรือเพิ่ม/ลบแถวได้โดยตรง จากนั้นกดปุ่มบันทึกหรือปุ่ม Undo ด้านล่าง")
             
             with st.form("edit_table_form"):
                 edited_df = st.data_editor(display_df, num_rows="dynamic", use_container_width=True, key="master_data_editor")
-                save_changes_btn = st.form_submit_button(label="💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary")
+                
+                col_save_btn, col_undo_btn, col_empty = st.columns([1.5, 1.5, 3])
+                with col_save_btn:
+                    save_changes_btn = st.form_submit_button(label="💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary", use_container_width=True)
+                with col_undo_btn:
+                    undo_btn = st.form_submit_button(label="↩️ Undo (ยกเลิกการแก้ไข)", use_container_width=True)
                 
                 if save_changes_btn:
                     st.success("✅ บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว!")
                     st.session_state.show_editor_modal = False
+                    st.rerun()
+                
+                if undo_btn:
+                    st.warning("↩️ ยกเลิกการแก้ไขล่าสุดเรียบร้อยแล้ว")
                     st.rerun()
 
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
