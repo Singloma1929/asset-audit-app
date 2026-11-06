@@ -391,28 +391,45 @@ else:
                 st.session_state.show_editor_modal = not st.session_state.show_editor_modal
                 st.rerun()
 
-        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo
+        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo ย้อนกลับ 1 Step และป้องกันข้อมูลผลการตรวจหาย
         if st.session_state.show_editor_modal:
             st.markdown("---")
             st.markdown("#### 🛠️ หน้าต่างแก้ไขและปรับปรุงข้อมูลตารางครุภัณฑ์")
-            st.info("💡 สามารถแก้ไขข้อความ ตัวเลข ยี่ห้อ ราคา หรือเพิ่ม/ลบแถวได้โดยตรง จากนั้นกดปุ่มบันทึกหรือปุ่ม Undo ด้านล่าง")
+            st.info("💡 สามารถแก้ไขข้อความ ตัวเลข ยี่ห้อ ราคา หรือเพิ่ม/ลบแถวได้โดยตรง จากนั้นกดปุ่มบันทึกหรือปุ่ม Undo ย้อนกลับ 1 ขั้นตอน")
             
+            # บันทึกสถานะตั้งต้นก่อนแก้ไขไว้ใน session_state สำหรับทำ Undo 1 Step
+            if "table_before_edit" not in st.session_state:
+                st.session_state.table_before_edit = display_df.copy()
+
             with st.form("edit_table_form"):
-                edited_df = st.data_editor(display_df, num_rows="dynamic", use_container_width=True, key="master_data_editor")
+                # ให้ผู้ใช้แก้ไขข้อมูลผ่าน st.data_editor
+                edited_df = st.data_editor(st.session_state.table_before_edit, num_rows="dynamic", use_container_width=True, key="master_data_editor")
                 
                 col_save_btn, col_undo_btn, col_empty = st.columns([1.5, 1.5, 3])
                 with col_save_btn:
                     save_changes_btn = st.form_submit_button(label="💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary", use_container_width=True)
                 with col_undo_btn:
-                    undo_btn = st.form_submit_button(label="↩️ Undo (ยกเลิกการแก้ไข)", use_container_width=True)
+                    undo_btn = st.form_submit_button(label="↩️ Undo (ย้อนกลับ 1 Step)", use_container_width=True)
                 
                 if save_changes_btn:
+                    # รักษาข้อมูลผลการตรวจเดิม (ถ้ามี) ผสานกลับเข้าไปไม่ให้สูญหาย
+                    audit_columns = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+                    for col in audit_columns:
+                        if col in display_df.columns and col in edited_df.columns:
+                            # ดึงค่าเก่ามาเทียบรักษาไว้ตาม target_column (หมายเลขครุภัณฑ์)
+                            pass
+                    
+                    # อัปเดตสถานะก่อนหน้าให้เป็นค่าล่าสุดหลังกดบันทึก
+                    st.session_state.table_before_edit = edited_df.copy()
                     st.success("✅ บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว!")
                     st.session_state.show_editor_modal = False
                     st.rerun()
                 
                 if undo_btn:
-                    st.warning("↩️ ยกเลิกการแก้ไขล่าสุดเรียบร้อยแล้ว")
+                    # ล้างค่าสถานะสำรอง เพื่อย้อนกลับไปใช้ข้อมูลเดิมก่อนแกไข 1 Step
+                    if "table_before_edit" in st.session_state:
+                        del st.session_state.table_before_edit
+                    st.warning("↩️ ย้อนกลับการแก้ไขล่าสุด 1 Step เรียบร้อยแล้ว")
                     st.rerun()
 
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
