@@ -92,15 +92,15 @@ st.markdown("""
         transition: width 0.4s ease;
     }
     [data-testid="stMetricValue"] {
-        font-size: 22px !important;
+        font-size: 20px !important;
     }
     [data-testid="stMetricLabel"] {
-        font-size: 12px !important;
+        font-size: 11px !important;
     }
     [data-testid="stMetric"] {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
-        padding: 8px 10px;
+        padding: 8px 8px;
         border-radius: 8px;
     }
     </style>
@@ -338,9 +338,10 @@ else:
     checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
     unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
     
-    # 📌 นับจำนวนจากช่อง 'สภาพครุภัณฑ์' ตามเงื่อนไขใหม่
+    # 📌 นับจำนวนตามช่องสภาพครุภัณฑ์อย่างแม่นยำ
     normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
     damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
+    obsolete_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'หมดความจำเป็น')])
 
     progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
     bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
@@ -358,15 +359,16 @@ else:
         unsafe_allow_html=True
     )
 
-    # --- 🎛️ สร้างกล่องแสดงผลด้านบน 6 ช่องสมดุลกัน ---
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    # --- 🎛️ สร้างกล่องแสดงผลด้านบน 7 ช่องสมดุลกัน ---
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
     m1.metric("📦 ทั้งหมด", total_items)
     m2.metric("✔️ ตรวจแล้ว", checked_items)
     m3.metric("⏳ ยังไม่ตรวจ", unchecked_items)
     m4.metric("✅ สภาพปกติ", normal_count)
     m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
+    m6.metric("📦 หมดความจำเป็น", obsolete_count)
 
-    # รายการสภาพพิเศษสำหรับช่องที่ 6 (ตัด ปกติ และ ชำรุด/เสียหาย ออก)
+    # รายการสภาพพิเศษสำหรับช่องที่ 7 (ตัด ปกติ, ชำรุด/เสียหาย และ หมดความจำเป็น ออก)
     condition_options = [
         "โปรดระบุสภาพ",
         "ปกติ", 
@@ -381,21 +383,20 @@ else:
         "จำหน่ายแล้ว",
         "แปรสภาพหรือทำลาย"
     ]
-    special_conditions = condition_options[3:] # เริ่มจาก หมดความจำเป็น เป็นต้นไป
+    other_conditions = condition_options[4:] # เริ่มจาก ให้ยืม/ยืมมา เป็นต้นไป
 
-    with m6:
-        # ช่องที่ 6 เป็น Dropdown เลือกดูสภาพพิเศษ พร้อมคำนวณจำนวนตามหลักคณิตศาสตร์
-        selected_top_special = st.selectbox(
-            "📋 สภาพพิเศษอื่นๆ", 
-            ["เลือกดูสภาพพิเศษ..."] + special_conditions,
-            key="top_special_metric_dropdown",
+    with m7:
+        selected_top_other = st.selectbox(
+            "📋 สภาพอื่นๆ", 
+            ["เลือกดูสภาพ..."] + other_conditions,
+            key="top_other_metric_dropdown",
             label_visibility="visible"
         )
-        if selected_top_special != "เลือกดูสภาพพิเศษ...":
-            spec_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == selected_top_special)])
-            st.markdown(f"<div style='font-size: 14px; font-weight: bold; color: #1d4ed8; text-align: center; margin-top: -8px;'>จำนวน: {spec_count} รายการ</div>", unsafe_allow_html=True)
+        if selected_top_other != "เลือกดูสภาพ...":
+            other_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == selected_top_other)])
+            st.markdown(f"<div style='font-size: 13px; font-weight: bold; color: #1d4ed8; text-align: center; margin-top: -8px;'>จำนวน: {other_count} ราย</div>", unsafe_allow_html=True)
         else:
-            st.markdown("<div style='font-size: 13px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกเพื่อดูจำนวน</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 12px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกดูจำนวน</div>", unsafe_allow_html=True)
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
@@ -428,9 +429,9 @@ else:
         
         display_df = df[valid_mask]
         
-        # หากมีการเลือกสภาพพิเศษจากช่อง Metric ด้านบน ให้ผสานการกรองลงในตารางด้วยอัตโนมัติ
-        if selected_top_special != "เลือกดูสภาพพิเศษ...":
-            display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_special]
+        # หากมีการเลือกสภาพจากช่อง "สภาพอื่นๆ" ด้านบน ให้ผสานการกรองลงในตารางด้วยอัตโนมัติ
+        if selected_top_other != "เลือกดูสภาพ...":
+            display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_other]
 
         if status_filter != "ทั้งหมด":
             display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
