@@ -169,7 +169,6 @@ def get_shared_data():
                     code = str(row['asset_code']).strip()
                     raw_note = str(row['note']) if pd.notna(row['note']) else '-'
                     
-                    # แยกข้อมูลหมายเหตุ กับ ข้อมูลครุภัณฑ์ที่ถูกแก้ไข/เพิ่มใหม่ (ถ้ามีเก็บไว้ในรูปแบบ JSON)
                     actual_note = raw_note
                     extra_info = {}
                     if "||ASSET_DATA||" in raw_note:
@@ -182,13 +181,11 @@ def get_shared_data():
 
                     mask = df[target_col].astype(str).str.strip() == code
                     if mask.any():
-                        # 1. กรณีมีรหัสใน Excel อยู่แล้ว -> อัปเดตผลการตรวจ และข้อมูลที่เคยแก้ไข
                         df.loc[mask, 'สภาพครุภัณฑ์'] = str(row['condition']) if pd.notna(row['condition']) else '-'
                         df.loc[mask, 'สถานะการตรวจ'] = str(row['status']) if pd.notna(row['status']) else 'ยังไม่ตรวจ'
                         df.loc[mask, 'ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
                         
-                        # ถ้ามีหมายเหตุที่บันทึกผ่านโหมดแก้ไข ให้ดึงมาทับช่องหมายเหตุหลัก
                         if extra_info and 'หมายเหตุ_ข้อมูลหลัก' in extra_info:
                             df.loc[mask, 'หมายเหตุ'] = extra_info['หมายเหตุ_ข้อมูลหลัก']
                         elif actual_note != '-':
@@ -198,7 +195,6 @@ def get_shared_data():
                             if col_k in df.columns:
                                 df.loc[mask, col_k] = str(val_v)
                     else:
-                        # 2. กรณีเป็นรายการที่เพิ่มใหม่บน Cloud (ไม่มีในไฟล์ Excel เดิม) -> สร้างแถวใหม่ต่อท้าย
                         new_r = {c: '-' for c in df.columns}
                         new_r[target_col] = code
                         new_r['สภาพครุภัณฑ์'] = str(row['condition']) if pd.notna(row['condition']) else '-'
@@ -221,7 +217,6 @@ def get_shared_data():
     return df, target_col
 
 def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, extra_dict=None):
-    """บันทึกทั้งผลการตรวจ และข้อมูลรายละเอียดครุภัณฑ์ลงใน Supabase Cloud ทันที"""
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return
@@ -346,8 +341,9 @@ else:
     progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
     bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
     
+    # นับจำนวนสภาพปกติ และ สภาพชำรุด/เสียหาย จากช่อง 'สภาพครุภัณฑ์' โดยตรง
     normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
-    damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] != 'ปกติ')])
+    damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
 
     st.markdown(
         f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)",
@@ -402,20 +398,34 @@ else:
     with main_tab1:
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
         
-        # จัดแบ่งเป็น 3 ช่อง: ช่องค้นหา, กรองสภาพ, กรองสถานะ
-        col_search, col_cond_filter, col_status_filter = st.columns([2, 1.5, 1])
-        with col_search:
-            search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์...", key="search_main_1")
-        with col_cond_filter:
-            condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options[1:], key="filter_cond_main_1")
-        with col_status_filter:
-            status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
+        # --- 🎛️ จัดแบ่งเป็น 6 ช่องสมดุลกัน ---
+        c_s1, c_s2, c_s3, c_s4, c_s5, c_s6 = st.columns(6)
+        with c_s1:
+            search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลข...", key="search_main_1")
+        with c_s2:
+            condition_filter = st.selectbox("กรองสภาพ", ["ทั้งหมด"] + condition_options[1:], key="filter_cond_main_1")
+        with c_s3:
+            status_filter = st.selectbox("กรองสถานะ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
+        with c_s4:
+            # รายการ Dropdown สภาพพิเศษ (ตัด ปกติ และ ชำรุด/เสียหาย ออก)
+            special_conditions = [c for c in condition_options[3:]]
+            special_cond_filter = st.selectbox("สภาพพิเศษอื่นๆ", ["ทั้งหมด"] + special_conditions, key="filter_special_cond")
+        with c_s5:
+            inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจ...", key="filter_inspector")
+        with c_s6:
+            note_filter = st.text_input("กรองหมายเหตุ:", placeholder="คำค้นในหมายเหตุ...", key="filter_note")
         
         display_df = df[valid_mask]
         if status_filter != "ทั้งหมด":
             display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
         if condition_filter != "ทั้งหมด":
             display_df = display_df[display_df['สภาพครุภัณฑ์'] == condition_filter]
+        if special_cond_filter != "ทั้งหมด":
+            display_df = display_df[display_df['สภาพครุภัณฑ์'] == special_cond_filter]
+        if inspector_filter:
+            display_df = display_df[display_df['ผู้ตรวจ'].astype(str).str.contains(inspector_filter, case=False, na=False)]
+        if note_filter:
+            display_df = display_df[display_df['หมายเหตุ'].astype(str).str.contains(note_filter, case=False, na=False)]
         if search_query:
             display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
@@ -506,7 +516,6 @@ else:
                         df.loc[mask, 'ผู้ตรวจ'] = save_inspector
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
                         
-                        # บันทึกขึ้น Supabase Cloud ทันที
                         save_progress_to_supabase(
                             asset_code=item_target,
                             condition=save_condition,
@@ -522,7 +531,6 @@ else:
         # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ / เพิ่มรายการใหม่ (มี Checkbox ซ่อน/แสดง) ---
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
         
-        # 🔘 เพิ่มปุ่ม Checkbox สำหรับซ่อน/แสดงฟังก์ชันจัดการโครงสร้างข้อมูล
         enable_admin_tools = st.checkbox("⚙️ เปิดใช้งานโหมด: แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (สำหรับผู้ดูแลระบบ)", value=False)
         
         if enable_admin_tools:
@@ -719,7 +727,6 @@ else:
                                     df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
                                     df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
                                     
-                                    # บันทึกขึ้น Supabase Cloud ทันที
                                     save_progress_to_supabase(
                                         asset_code=mob_target,
                                         condition=m_condition,
