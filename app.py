@@ -338,7 +338,6 @@ else:
     checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
     unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
     
-    # 📌 นับจำนวนตามช่องสภาพครุภัณฑ์อย่างแม่นยำ
     normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
     damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
     obsolete_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'หมดความจำเป็น')])
@@ -359,7 +358,6 @@ else:
         unsafe_allow_html=True
     )
 
-    # --- 🎛️ สร้างกล่องแสดงผลด้านบน 7 ช่องสมดุลกัน ---
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
     m1.metric("📦 ทั้งหมด", total_items)
     m2.metric("✔️ ตรวจแล้ว", checked_items)
@@ -368,7 +366,6 @@ else:
     m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
     m6.metric("📦 หมดความจำเป็น", obsolete_count)
 
-    # รายการสภาพพิเศษสำหรับช่องที่ 7 (ตัด ปกติ, ชำรุด/เสียหาย และ หมดความจำเป็น ออก)
     condition_options = [
         "โปรดระบุสภาพ",
         "ปกติ", 
@@ -383,7 +380,7 @@ else:
         "จำหน่ายแล้ว",
         "แปรสภาพหรือทำลาย"
     ]
-    other_conditions = condition_options[4:] # เริ่มจาก ให้ยืม/ยืมมา เป็นต้นไป
+    other_conditions = condition_options[4:]
 
     with m7:
         selected_top_other = st.selectbox(
@@ -416,7 +413,6 @@ else:
     with main_tab1:
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
         
-        # --- 🎛️ ฟิลเตอร์ค้นหาด้านล่าง 4 ช่องสมดุลสวยงาม ---
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
             search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์...", key="search_main_1")
@@ -429,7 +425,6 @@ else:
         
         display_df = df[valid_mask]
         
-        # หากมีการเลือกสภาพจากช่อง "สภาพอื่นๆ" ด้านบน ให้ผสานการกรองลงในตารางด้วยอัตโนมัติ
         if selected_top_other != "เลือกดูสภาพ...":
             display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_other]
 
@@ -444,7 +439,6 @@ else:
 
         st.dataframe(display_df, use_container_width=True)
 
-        # --- 📥 ปุ่มดาวน์โหลดรายการที่แสดง ---
         col_dl_btn, col_space = st.columns([1.2, 3.8])
         with col_dl_btn:
             filtered_buffer = BytesIO()
@@ -460,7 +454,6 @@ else:
                 use_container_width=True
             )
 
-        # --- 📝 ส่วนบันทึก/อัปเดตผลการตรวจสอบ ---
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
         st.markdown("### 📝 บันทึก/อัปเดตผลการตรวจสอบ")
         with st.container(border=True):
@@ -541,9 +534,7 @@ else:
                         st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
                         st.rerun()
 
-        # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ / เพิ่มรายการใหม่ (มี Checkbox ซ่อน/แสดง) ---
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
-        
         enable_admin_tools = st.checkbox("⚙️ เปิดใช้งานโหมด: แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (สำหรับผู้ดูแลระบบ)", value=False)
         
         if enable_admin_tools:
@@ -642,120 +633,117 @@ else:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
         st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
         
-        left_col, right_col = st.columns([1, 1.5])
-        
-        with left_col:
-            with st.container(border=True):
-                st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
-                
-                if "open_scanner" not in st.session_state:
-                    st.session_state.open_scanner = False
-                
-                btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
-                if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
-                    st.session_state.open_scanner = not st.session_state.open_scanner
-                    st.rerun()
-                
-                if st.session_state.open_scanner:
-                    render_live_qr_scanner()
+        # จัดเรียงใหม่ให้อยู่ในแนวตั้งฝั่งเดียว (ใต้กันลงมาอย่างสวยงาม)
+        with st.container(border=True):
+            st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
+            
+            if "open_scanner" not in st.session_state:
+                st.session_state.open_scanner = False
+            
+            btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
+            if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
+                st.session_state.open_scanner = not st.session_state.open_scanner
+                st.rerun()
+            
+            if st.session_state.open_scanner:
+                render_live_qr_scanner()
 
-                mobile_search = st.text_input(
-                    "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่ (แตะค้างแล้วกด 'วาง'):",
-                    value="",
-                    key="mob_input_box"
-                )
+            mobile_search = st.text_input(
+                "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่ (แตะค้างแล้วกด 'วาง'):",
+                value="",
+                key="mob_input_box"
+            )
 
-        with right_col:
-            if mobile_search:
-                matched_mob = df[valid_mask][df[valid_mask][target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
+        if mobile_search:
+            matched_mob = df[valid_mask][df[valid_mask][target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
+            
+            if not matched_mob.empty:
+                st.success(f"🎯 พบข้อมูลทั้งหมด {len(matched_mob)} รายการ")
+                st.dataframe(matched_mob, use_container_width=True)
                 
-                if not matched_mob.empty:
-                    st.success(f"🎯 พบข้อมูลทั้งหมด {len(matched_mob)} รายการ")
-                    st.dataframe(matched_mob, use_container_width=True)
-                    
-                    st.markdown("### 📝 บันทึกผลการตรวจหน้างาน")
-                    with st.container(border=True):
-                        m_col_item, m_col_badge = st.columns([1.2, 1.8])
-                        with m_col_item:
-                            mob_target = st.selectbox(
-                                "เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก",
-                                options=matched_mob[target_column].tolist(),
-                                key="mob_item_select"
-                            )
-                        with m_col_badge:
-                            st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
-                            mob_row = df[df[target_column].astype(str) == str(mob_target)].iloc[0]
-                            render_status_badge(
+                st.markdown("### 📝 บันทึกผลการตรวจหน้างาน")
+                with st.container(border=True):
+                    m_col_item, m_col_badge = st.columns([1.2, 1.8])
+                    with m_col_item:
+                        mob_target = st.selectbox(
+                            "เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก",
+                            options=matched_mob[target_column].tolist(),
+                            key="mob_item_select"
+                        )
+                    with m_col_badge:
+                        st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
+                        mob_row = df[df[target_column].astype(str) == str(mob_target)].iloc[0]
+                        render_status_badge(
+                            mob_row['สถานะการตรวจ'],
+                            mob_row['สภาพครุภัณฑ์'],
+                            mob_row['ผู้ตรวจ']
+                        )
+
+                    with st.form("mobile_quick_audit", border=False):
+                        mc1, mc2, mc3, mc4 = st.columns(4)
+                        with mc1:
+                            mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0, key="m_cond")
+                        with mc2:
+                            mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0, key="m_status")
+                        with mc3:
+                            mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", key="m_note")
+                        with mc4:
+                            mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
+                        
+                        m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
+                        with m_btn_col:
+                            mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที", use_container_width=True)
+                        with m_save_status_col:
+                            render_save_status_badge(
                                 mob_row['สถานะการตรวจ'],
-                                mob_row['สภาพครุภัณฑ์'],
-                                mob_row['ผู้ตรวจ']
+                                mob_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ']
                             )
-
-                        with st.form("mobile_quick_audit", border=False):
-                            mc1, mc2, mc3, mc4 = st.columns(4)
-                            with mc1:
-                                mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=0, key="m_cond")
-                            with mc2:
-                                mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=0, key="m_status")
-                            with mc3:
-                                mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", key="m_note")
-                            with mc4:
-                                mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
-                            
-                            m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
-                            with m_btn_col:
-                                mob_submit = st.form_submit_button(label="💾 บันทึกผลการตรวจทันที", use_container_width=True)
-                            with m_save_status_col:
-                                render_save_status_badge(
-                                    mob_row['สถานะการตรวจ'],
-                                    mob_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ']
-                                )
-                            
-                            if mob_submit:
-                                if mob_status == "โปรดระบุสถานะ":
-                                    st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
-                                elif mob_status == "ตรวจแล้ว" and mob_condition == "โปรดระบุสภาพ":
-                                    st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
+                        
+                        if mob_submit:
+                            if mob_status == "โปรดระบุสถานะ":
+                                st.error("⚠️ กรุณาเลือก '2. สถานะการตรวจ' ก่อนกดบันทึกครับ")
+                            elif mob_status == "ตรวจแล้ว" and mob_condition == "โปรดระบุสภาพ":
+                                st.error("⚠️ กรุณาเลือก '1. สภาพครุภัณฑ์' ก่อนกดบันทึกครับ")
+                            else:
+                                thai_time = datetime.utcnow() + timedelta(hours=7)
+                                current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
+                                
+                                mask = df[target_column].astype(str) == str(mob_target)
+                                if mob_status == "ยังไม่ตรวจ":
+                                    m_condition = '-'
+                                    m_status_val = 'ยังไม่ตรวจ'
+                                    m_note_val = '-'
+                                    m_inspector_val = '-'
+                                    m_time_val = '-'
                                 else:
-                                    thai_time = datetime.utcnow() + timedelta(hours=7)
-                                    current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
-                                    
-                                    mask = df[target_column].astype(str) == str(mob_target)
-                                    if mob_status == "ยังไม่ตรวจ":
-                                        m_condition = '-'
-                                        m_status_val = 'ยังไม่ตรวจ'
-                                        m_note_val = '-'
-                                        m_inspector_val = '-'
-                                        m_time_val = '-'
-                                    else:
-                                        m_condition = mob_condition
-                                        m_status_val = mob_status
-                                        m_note_val = mob_note.strip() if mob_note.strip() else '-'
-                                        m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
-                                        m_time_val = current_time
-                                    
-                                    df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
-                                    df.loc[mask, 'สถานะการตรวจ'] = m_status_val
-                                    df.loc[mask, 'หมายเหตุ'] = m_note_val
-                                    df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
-                                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
-                                    
-                                    save_progress_to_supabase(
-                                        asset_code=mob_target,
-                                        condition=m_condition,
-                                        status=m_status_val,
-                                        note=m_note_val,
-                                        inspector=m_inspector_val,
-                                        timestamp=m_time_val
-                                    )
-                                    get_shared_data.clear()
-                                    st.session_state.open_scanner = False
-                                    st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
-                                    st.rerun()
-                else:
-                    st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
+                                    m_condition = mob_condition
+                                    m_status_val = mob_status
+                                    m_note_val = mob_note.strip() if mob_note.strip() else '-'
+                                    m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
+                                    m_time_val = current_time
+                                
+                                df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
+                                df.loc[mask, 'สถานะการตรวจ'] = m_status_val
+                                df.loc[mask, 'หมายเหตุ'] = m_note_val
+                                df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
+                                df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
+                                
+                                save_progress_to_supabase(
+                                    asset_code=mob_target,
+                                    condition=m_condition,
+                                    status=m_status_val,
+                                    note=m_note_val,
+                                    inspector=m_inspector_val,
+                                    timestamp=m_time_val
+                                )
+                                get_shared_data.clear()
+                                st.session_state.open_scanner = False
+                                st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
+                                st.rerun()
             else:
-                st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดปุ่ม **'📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ'** ทางด้านซ้ายมือเพื่อเริ่มตรวจสอบได้เลยครับ")
+                st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
+        else:
+            st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดปุ่ม **'📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ'** ด้านบนเพื่อเริ่มตรวจสอบได้เลยครับ")
 
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
