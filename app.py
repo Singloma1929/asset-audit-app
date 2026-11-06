@@ -111,6 +111,8 @@ st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
 header_row = 4
 
+import json
+
 @st.cache_resource
 def get_shared_data():
     if os.path.exists("default_asset.xlsx"):
@@ -153,44 +155,93 @@ def get_shared_data():
             else:
                 df[col] = '-'
 
-    # แปลงคอลัมน์ทั่วไปให้เป็น String เพื่อให้ st.data_editor พิมพ์แก้ไขได้อิสระ
     for col in df.columns:
-        df[col] = df[col].astype(str)
-        df[col] = df[col].replace('nan', '-')
+        df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
-    # ดึงข้อมูลจาก Supabase Cloud
+    # ดึงข้อมูลจาก Supabase Cloud (รวมถึงรายการที่เคยแก้ไขและรายการที่เพิ่มใหม่บน Cloud)
     if supabase:
         try:
             response = supabase.table("core_assetauditrecord").select("*").execute()
             saved_data = response.data
             
             if saved_data:
-                saved_df = pd.DataFrame(saved_data)
-                for _, row in saved_df.iterrows():
-                    code = str(row['asset_code'])
-                    mask = df[target_col].astype(str) == code
+                new_cloud_rows = []
+                for row in saved_data:
+                    code = str(row['asset_code']).strip()
+                    raw_note = str(row['note']) if pd.notna(row['note']) else '-'
+                    
+                    # แยกข้อมูลหมายเหตุ กับ ข้อมูลครุภัณฑ์ที่ถูกแก้ไข/เพิ่มใหม่ (ถ้ามีเก็บไว้ในรูปแบบ JSON)
+                    actual_note = raw_note
+                    extra_info = {}
+                    if "||ASSET_DATA||" in raw_note:
+                        parts = raw_note.split("||ASSET_DATA||", 1)
+                        actual_note = parts[0] if parts[0] else '-'
+                        try:
+                            extra_info = json.loads(parts[1])
+                        except Exception:
+                            extra_info = {}
+
+                    mask = df[target_col].astype(str).str.strip() == code
                     if mask.any():
-                        df.loc[mask, 'สภาพครุภัณฑ์'] = str(row['condition'])
-                        df.loc[mask, 'สถานะการตรวจ'] = str(row['status'])
-                        df.loc[mask, 'หมายเหตุ'] = str(row['note']) if pd.notna(row['note']) else '-'
+                        # 1. กรณีมีรหัสใน Excel อยู่แล้ว -> อัปเดตผลการตรวจ และข้อมูลที่เคยแก้ไข
+                        df.loc[mask, 'สภาพครุภัณฑ์'] = str(row['condition']) if pd.notna(row['condition']) else '-'
+                        df.loc[mask, 'สถานะการตรวจ'] = str(row['status']) if pd.notna(row['status']) else 'ยังไม่ตรวจ'
+                        df.loc[mask, 'หมายเหตุ'] = actual_note
                         df.loc[mask, 'ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
-                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at'])
+                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
+                        for col_k, val_v in extra_info.items():
+                            if col_k in df.columns:
+                                df.loc[mask, col_k] = str(val_v)
+                    else:
+                        # 2. กรณีเป็นรายการที่เพิ่มใหม่บน Cloud (ไม่มีในไฟล์ Excel เดิม) -> สร้างแถวใหม่ต่อท้าย
+                        new_r = {c: '-' for c in df.columns}
+                        new_r[target_col] = code
+                        new_r['สภาพครุภัณฑ์'] = str(row['condition']) if pd.notna(row['condition']) else '-'
+                        new_r['สถานะการตรวจ'] = str(row['status']) if pd.notna(row['status']) else 'ยังไม่ตรวจ'
+                        new_r['หมายเหตุ'] = actual_note
+                        new_r['ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
+                        new_r['วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
+                        for col_k, val_v in extra_info.items():
+                            if col_k in df.columns:
+                                new_r[col_k] = str(val_v)
+                        new_cloud_rows.append(new_r)
+                
+                if new_cloud_rows:
+                    df = pd.concat([df, pd.DataFrame(new_cloud_rows)], ignore_index=True)
+
         except Exception as e:
             st.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Supabase: {e}")
 
     return df, target_col
 
-def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp):
-    """บันทึกหรืออัปเดตผลการตรวจลงใน Supabase บน Cloud ทันที"""
+def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, extra_dict=None):
+    """บันทึกทั้งผลการตรวจ และข้อมูลรายละเอียดครุภัณฑ์ลงใน Supabase Cloud ทันที"""
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return
     try:
+        # ดึงข้อมูล extra_dict เดิมบน Cloud มาก่อน (เพื่อไม่ให้การบันทึกผลตรวจไปทับข้อมูลครุภัณฑ์ที่เคยแก้)
+        existing = supabase.table("core_assetauditrecord").select("note").eq("asset_code", str(asset_code)).execute()
+        saved_extra = {}
+        if existing.data:
+            old_note = str(existing.data[0].get("note", ""))
+            if "||ASSET_DATA||" in old_note:
+                try:
+                    saved_extra = json.loads(old_note.split("||ASSET_DATA||", 1)[1])
+                except Exception:
+                    saved_extra = {}
+        
+        if extra_dict is not None:
+            saved_extra.update(extra_dict)
+            
+        clean_note = str(note).split("||ASSET_DATA||")[0]
+        final_note = f"{clean_note}||ASSET_DATA||{json.dumps(saved_extra, ensure_ascii=False)}" if saved_extra else clean_note
+
         data_payload = {
-            "asset_code": str(asset_code),
+            "asset_code": str(asset_code).strip(),
             "condition": condition,
             "status": status,
-            "note": note,
+            "note": final_note,
             "inspector": inspector,
             "updated_at": timestamp
         }
@@ -709,7 +760,84 @@ else:
                 file_name=f"QRCode_Label_{selected_qr_item}.png",
                 mime="image/png"
             )
+        # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ หรือ เพิ่มรายการใหม่ (Upload ขึ้น Cloud ทันที) ---
+        st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
+        st.markdown("### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (ซิงค์ขึ้น Cloud)")
+        
+        with st.container(border=True):
+            mode_select = st.radio(
+                "เลือกโหมดการทำงาน:",
+                ["✏️ แก้ไขข้อมูลครุภัณฑ์เดิม", "➕ เพิ่มรายการครุภัณฑ์ใหม่ขึ้น Cloud"],
+                horizontal=True
+            )
+            
+            audit_cols_set = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
+            editable_cols = [c for c in df.columns if c not in audit_cols_set and c != target_column]
 
+            if mode_select == "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม":
+                edit_target = st.selectbox(
+                    f"เลือกหมายเลขครุภัณฑ์ที่ต้องการแก้ไขข้อมูล ({target_column})",
+                    options=df[valid_mask][target_column].tolist(),
+                    key="cloud_edit_item_select"
+                )
+                target_row = df[df[target_column].astype(str) == str(edit_target)].iloc[0]
+                
+                with st.form("cloud_edit_asset_form"):
+                    st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
+                    updated_values = {}
+                    cols_ui = st.columns(3)
+                    for idx, col_name in enumerate(editable_cols):
+                        with cols_ui[idx % 3]:
+                            updated_values[col_name] = st.text_input(
+                                col_name,
+                                value=str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
+                            )
+                    
+                    save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
+                    if save_edit_cloud:
+                        save_progress_to_supabase(
+                            asset_code=edit_target,
+                            condition=target_row['สภาพครุภัณฑ์'],
+                            status=target_row['สถานะการตรวจ'],
+                            note=target_row['หมายเหตุ'],
+                            inspector=target_row['ผู้ตรวจ'],
+                            timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
+                            extra_dict=updated_values
+                        )
+                        get_shared_data.clear()  # ล้าง Cache เพื่อดึงข้อมูลใหม่จาก Cloud ทันที
+                        st.success(f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!")
+                        st.rerun()
+
+            else:
+                with st.form("cloud_add_asset_form"):
+                    st.caption("กรอกหมายเลขครุภัณฑ์ใหม่ (ต้องมีตัวเลข) และรายละเอียด เพื่อเพิ่มเข้าสู่ระบบ Cloud ถาวร")
+                    new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข เช่น 605-012600-30099)")
+                    
+                    new_values = {}
+                    cols_ui = st.columns(3)
+                    for idx, col_name in enumerate(editable_cols):
+                        with cols_ui[idx % 3]:
+                            new_values[col_name] = st.text_input(col_name, value="-", key=f"new_col_{idx}")
+                    
+                    save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
+                    if save_new_cloud:
+                        if not is_valid_asset_code(new_code):
+                            st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง (ต้องมีตัวเลขผสมอยู่ด้วยครับ)")
+                        elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
+                            st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
+                        else:
+                            save_progress_to_supabase(
+                                asset_code=new_code.strip(),
+                                condition="-",
+                                status="ยังไม่ตรวจ",
+                                note="-",
+                                inspector="-",
+                                timestamp="-",
+                                extra_dict=new_values
+                            )
+                            get_shared_data.clear()  # ล้าง Cache เพื่อโหลดรายการใหม่จาก Cloud เข้าตารางทันที
+                            st.success(f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code} ขึ้น Cloud สำเร็จแล้ว!")
+                            st.rerun()
     with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
