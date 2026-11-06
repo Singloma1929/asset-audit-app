@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -110,8 +111,6 @@ st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุ�
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
 header_row = 4
-
-import json
 
 @st.cache_resource
 def get_shared_data():
@@ -416,9 +415,8 @@ else:
 
         st.dataframe(display_df, use_container_width=True)
 
-        # --- 📥 ปุ่มดาวน์โหลด และ ✏️ ปุ่มเปิดหน้าต่างแก้ไขข้อมูล ---
-        col_dl_btn, col_edit_btn, col_space = st.columns([1.2, 1.2, 2.6])
-        
+        # --- 📥 ปุ่มดาวน์โหลดรายการที่แสดง ---
+        col_dl_btn, col_space = st.columns([1.2, 3.8])
         with col_dl_btn:
             filtered_buffer = BytesIO()
             display_df.to_excel(filtered_buffer, index=False)
@@ -432,87 +430,8 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-            
-        with col_edit_btn:
-            if "show_editor_modal" not in st.session_state:
-                st.session_state.show_editor_modal = False
-                
-            edit_btn_label = "❌ ปิดหน้าต่างแก้ไข" if st.session_state.show_editor_modal else "✏️ แก้ไข/ปรับปรุงข้อมูล"
-            if st.button(edit_btn_label, use_container_width=True):
-                st.session_state.show_editor_modal = not st.session_state.show_editor_modal
-                st.rerun()
 
-        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo 1 Step และผสานแถวใหม่เข้าตารางหลัก
-        if st.session_state.show_editor_modal:
-            st.markdown("---")
-            st.markdown("#### 🛠️ หน้าต่างแก้ไขและปรับปรุงข้อมูลตารางครุภัณฑ์")
-            st.info("💡 สามารถแก้ไขข้อความ ตัวเลข ยี่ห้อ ราคา ... หรือเพิ่ม/ลบแถวได้โดยตรง (ยกเว้นช่อง สภาพครุภัณฑ์ สถานะการตรวจ ผู้ตรวจ วันเดือนปี ที่ทำการตรวจ ให้แก้ไขผ่านฟังก์ชันด้านล่าง 'บันทึก/อัปเดตผลการตรวจสอบ' แทน) จากนั้นกดปุ่มบันทึกเพื่อบันทึกบน Cloud หรือกดปุ่ม Undo เพื่อย้อนกลับ 1 ขั้นตอน")
-            
-            # 1. กำหนดตัวแปรจัดเก็บข้อมูลปัจจุบัน และ ข้อมูลก่อนหน้าสำหรับ Undo
-            if "editor_data_current" not in st.session_state:
-                st.session_state.editor_data_current = display_df.copy()
-            if "editor_data_undo" not in st.session_state:
-                st.session_state.editor_data_undo = display_df.copy()
-            if "editor_key_ver" not in st.session_state:
-                st.session_state.editor_key_ver = 0
-
-            # 2. จัดวางปุ่มบันทึก และ ปุ่ม Undo
-            col_save_btn, col_undo_btn, col_empty = st.columns([1.5, 1.5, 3])
-            
-            with col_undo_btn:
-                if st.button("↩️ Undo (ย้อนกลับ 1 Step)", use_container_width=True):
-                    st.session_state.editor_data_current = st.session_state.editor_data_undo.copy()
-                    st.session_state.editor_key_ver += 1
-                    st.toast("↩️ ย้อนกลับข้อมูล 1 Step เรียบร้อยแล้ว")
-                    st.rerun()
-
-            # 3. แสดงตาราง data_editor พร้อม dynamic key เพื่อรองรับ Undo
-            current_key = f"master_data_editor_{st.session_state.editor_key_ver}"
-            edited_df = st.data_editor(
-                st.session_state.editor_data_current,
-                num_rows="dynamic",
-                use_container_width=True,
-                key=current_key
-            )
-
-            with col_save_btn:
-                if st.button("💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary", use_container_width=True):
-                    # เก็บประวัติก่อนหน้าสำหรับ Undo
-                    st.session_state.editor_data_undo = st.session_state.editor_data_current.copy()
-                    st.session_state.editor_data_current = edited_df.copy()
-
-                    # เติมค่าเริ่มต้นสำหรับคอลัมน์ตรวจสอบในแถวที่เพิ่มใหม่
-                    if 'สถานะการตรวจ' in edited_df.columns:
-                        edited_df['สถานะการตรวจ'] = edited_df['สถานะการตรวจ'].fillna('ยังไม่ตรวจ').replace('', 'ยังไม่ตรวจ')
-                    if 'สภาพครุภัณฑ์' in edited_df.columns:
-                        edited_df['สภาพครุภัณฑ์'] = edited_df['สภาพครุภัณฑ์'].fillna('-').replace('', '-')
-
-                    # นำข้อมูลที่แก้ไข/เพิ่มใหม่ ไปอัปเดตลงใน DataFrame หลัก (df)
-                    # โดยอิงตามหมายเลขครุภัณฑ์ (target_column)
-                    existing_codes = set(df[target_column].astype(str))
-                    new_rows = []
-
-                    for idx, row in edited_df.iterrows():
-                        code = str(row.get(target_column, '')).strip()
-                        if code and code != 'nan' and code != 'None':
-                            if code in existing_codes:
-                                # รายการเดิม: อัปเดตข้อมูลตามที่แก้
-                                mask = df[target_column].astype(str) == code
-                                for c in edited_df.columns:
-                                    if c in df.columns and c not in ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']:
-                                        df.loc[mask, c] = str(row[c])
-                            else:
-                                # รายการใหม่: เก็บไว้ต่อท้ายตารางหลัก
-                                new_rows.append(row)
-
-                    if new_rows:
-                        new_df = pd.DataFrame(new_rows)
-                        df = pd.concat([df, new_df], ignore_index=True)
-
-                    st.success("✅ บันทึกการแก้ไขและเพิ่มรายการใหม่เข้าสู่ระบบเรียบร้อยแล้ว!")
-                    st.session_state.show_editor_modal = False
-                    st.rerun()
-
+        # --- 📝 ส่วนบันทึก/อัปเดตผลการตรวจสอบ ---
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
         st.markdown("### 📝 บันทึก/อัปเดตผลการตรวจสอบ")
         with st.container(border=True):
@@ -590,8 +509,88 @@ else:
                             inspector=save_inspector,
                             timestamp=save_time
                         )
+                        get_shared_data.clear()
                         st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
                         st.rerun()
+
+        # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ หรือ เพิ่มรายการใหม่ (Upload ขึ้น Cloud ทันที) ---
+        st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
+        st.markdown("### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (ซิงค์ขึ้น Cloud)")
+        
+        with st.container(border=True):
+            mode_select = st.radio(
+                "เลือกโหมดการทำงาน:",
+                ["✏️ แก้ไขข้อมูลครุภัณฑ์เดิม", "➕ เพิ่มรายการครุภัณฑ์ใหม่ขึ้น Cloud"],
+                horizontal=True
+            )
+            
+            audit_cols_set = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
+            editable_cols = [c for c in df.columns if c not in audit_cols_set and c != target_column]
+
+            if mode_select == "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม":
+                edit_target = st.selectbox(
+                    f"เลือกหมายเลขครุภัณฑ์ที่ต้องการแก้ไขข้อมูล ({target_column})",
+                    options=df[valid_mask][target_column].tolist(),
+                    key="cloud_edit_item_select"
+                )
+                target_row = df[df[target_column].astype(str) == str(edit_target)].iloc[0]
+                
+                with st.form("cloud_edit_asset_form"):
+                    st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
+                    updated_values = {}
+                    cols_ui = st.columns(3)
+                    for idx, col_name in enumerate(editable_cols):
+                        with cols_ui[idx % 3]:
+                            updated_values[col_name] = st.text_input(
+                                col_name,
+                                value=str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
+                            )
+                    
+                    save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
+                    if save_edit_cloud:
+                        save_progress_to_supabase(
+                            asset_code=edit_target,
+                            condition=target_row['สภาพครุภัณฑ์'],
+                            status=target_row['สถานะการตรวจ'],
+                            note=target_row['หมายเหตุ'],
+                            inspector=target_row['ผู้ตรวจ'],
+                            timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
+                            extra_dict=updated_values
+                        )
+                        get_shared_data.clear()  # ล้าง Cache เพื่อดึงข้อมูลใหม่จาก Cloud ทันที
+                        st.success(f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!")
+                        st.rerun()
+
+            else:
+                with st.form("cloud_add_asset_form"):
+                    st.caption("กรอกหมายเลขครุภัณฑ์ใหม่ (ต้องมีตัวเลข) และรายละเอียด เพื่อเพิ่มเข้าสู่ระบบ Cloud ถาวร")
+                    new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข เช่น 605-012600-30099)")
+                    
+                    new_values = {}
+                    cols_ui = st.columns(3)
+                    for idx, col_name in enumerate(editable_cols):
+                        with cols_ui[idx % 3]:
+                            new_values[col_name] = st.text_input(col_name, value="-", key=f"new_col_{idx}")
+                    
+                    save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
+                    if save_new_cloud:
+                        if not is_valid_asset_code(new_code):
+                            st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง (ต้องมีตัวเลขผสมอยู่ด้วยครับ)")
+                        elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
+                            st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
+                        else:
+                            save_progress_to_supabase(
+                                asset_code=new_code.strip(),
+                                condition="-",
+                                status="ยังไม่ตรวจ",
+                                note="-",
+                                inspector="-",
+                                timestamp="-",
+                                extra_dict=new_values
+                            )
+                            get_shared_data.clear()  # ล้าง Cache เพื่อโหลดรายการใหม่จาก Cloud เข้าตารางทันที
+                            st.success(f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code} ขึ้น Cloud สำเร็จแล้ว!")
+                            st.rerun()
 
     with main_tab2:
         st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
@@ -704,6 +703,7 @@ else:
                                         inspector=m_inspector_val,
                                         timestamp=m_time_val
                                     )
+                                    get_shared_data.clear()
                                     st.session_state.open_scanner = False
                                     st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
                                     st.rerun()
@@ -760,84 +760,7 @@ else:
                 file_name=f"QRCode_Label_{selected_qr_item}.png",
                 mime="image/png"
             )
-        # --- 🛠️ ส่วนแก้ไขข้อมูลครุภัณฑ์ หรือ เพิ่มรายการใหม่ (Upload ขึ้น Cloud ทันที) ---
-        st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
-        st.markdown("### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (ซิงค์ขึ้น Cloud)")
-        
-        with st.container(border=True):
-            mode_select = st.radio(
-                "เลือกโหมดการทำงาน:",
-                ["✏️ แก้ไขข้อมูลครุภัณฑ์เดิม", "➕ เพิ่มรายการครุภัณฑ์ใหม่ขึ้น Cloud"],
-                horizontal=True
-            )
-            
-            audit_cols_set = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
-            editable_cols = [c for c in df.columns if c not in audit_cols_set and c != target_column]
 
-            if mode_select == "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม":
-                edit_target = st.selectbox(
-                    f"เลือกหมายเลขครุภัณฑ์ที่ต้องการแก้ไขข้อมูล ({target_column})",
-                    options=df[valid_mask][target_column].tolist(),
-                    key="cloud_edit_item_select"
-                )
-                target_row = df[df[target_column].astype(str) == str(edit_target)].iloc[0]
-                
-                with st.form("cloud_edit_asset_form"):
-                    st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
-                    updated_values = {}
-                    cols_ui = st.columns(3)
-                    for idx, col_name in enumerate(editable_cols):
-                        with cols_ui[idx % 3]:
-                            updated_values[col_name] = st.text_input(
-                                col_name,
-                                value=str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
-                            )
-                    
-                    save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
-                    if save_edit_cloud:
-                        save_progress_to_supabase(
-                            asset_code=edit_target,
-                            condition=target_row['สภาพครุภัณฑ์'],
-                            status=target_row['สถานะการตรวจ'],
-                            note=target_row['หมายเหตุ'],
-                            inspector=target_row['ผู้ตรวจ'],
-                            timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
-                            extra_dict=updated_values
-                        )
-                        get_shared_data.clear()  # ล้าง Cache เพื่อดึงข้อมูลใหม่จาก Cloud ทันที
-                        st.success(f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!")
-                        st.rerun()
-
-            else:
-                with st.form("cloud_add_asset_form"):
-                    st.caption("กรอกหมายเลขครุภัณฑ์ใหม่ (ต้องมีตัวเลข) และรายละเอียด เพื่อเพิ่มเข้าสู่ระบบ Cloud ถาวร")
-                    new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข เช่น 605-012600-30099)")
-                    
-                    new_values = {}
-                    cols_ui = st.columns(3)
-                    for idx, col_name in enumerate(editable_cols):
-                        with cols_ui[idx % 3]:
-                            new_values[col_name] = st.text_input(col_name, value="-", key=f"new_col_{idx}")
-                    
-                    save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
-                    if save_new_cloud:
-                        if not is_valid_asset_code(new_code):
-                            st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง (ต้องมีตัวเลขผสมอยู่ด้วยครับ)")
-                        elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
-                            st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
-                        else:
-                            save_progress_to_supabase(
-                                asset_code=new_code.strip(),
-                                condition="-",
-                                status="ยังไม่ตรวจ",
-                                note="-",
-                                inspector="-",
-                                timestamp="-",
-                                extra_dict=new_values
-                            )
-                            get_shared_data.clear()  # ล้าง Cache เพื่อโหลดรายการใหม่จาก Cloud เข้าตารางทันที
-                            st.success(f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code} ขึ้น Cloud สำเร็จแล้ว!")
-                            st.rerun()
     with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
