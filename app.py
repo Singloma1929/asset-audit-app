@@ -92,15 +92,15 @@ st.markdown("""
         transition: width 0.4s ease;
     }
     [data-testid="stMetricValue"] {
-        font-size: 24px !important;
+        font-size: 22px !important;
     }
     [data-testid="stMetricLabel"] {
-        font-size: 13px !important;
+        font-size: 12px !important;
     }
     [data-testid="stMetric"] {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
-        padding: 8px 12px;
+        padding: 8px 10px;
         border-radius: 8px;
     }
     </style>
@@ -338,12 +338,12 @@ else:
     checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
     unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
     
-    progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
-    bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
-    
-    # นับจำนวนสภาพปกติ และ สภาพชำรุด/เสียหาย จากช่อง 'สภาพครุภัณฑ์' โดยตรง
+    # 📌 นับจำนวนจากช่อง 'สภาพครุภัณฑ์' ตามเงื่อนไขใหม่
     normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
     damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
+
+    progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
+    bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
 
     st.markdown(
         f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)",
@@ -358,22 +358,15 @@ else:
         unsafe_allow_html=True
     )
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    # --- 🎛️ สร้างกล่องแสดงผลด้านบน 6 ช่องสมดุลกัน ---
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("📦 ทั้งหมด", total_items)
     m2.metric("✔️ ตรวจแล้ว", checked_items)
     m3.metric("⏳ ยังไม่ตรวจ", unchecked_items)
     m4.metric("✅ สภาพปกติ", normal_count)
     m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
 
-    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
-
-    main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
-        "🔍 ค้นหา & บันทึกผล", 
-        "📱 ตรวจนับด้วยมือถือ (ยิงรหัส/ค้นหาด่วน)",
-        "🏷️ สร้าง QR Code", 
-        "📥 ส่งออกรายงาน Excel"
-    ])
-
+    # รายการสภาพพิเศษสำหรับช่องที่ 6 (ตัด ปกติ และ ชำรุด/เสียหาย ออก)
     condition_options = [
         "โปรดระบุสภาพ",
         "ปกติ", 
@@ -388,6 +381,30 @@ else:
         "จำหน่ายแล้ว",
         "แปรสภาพหรือทำลาย"
     ]
+    special_conditions = condition_options[3:] # เริ่มจาก หมดความจำเป็น เป็นต้นไป
+
+    with m6:
+        # ช่องที่ 6 เป็น Dropdown เลือกดูสภาพพิเศษ พร้อมคำนวณจำนวนตามหลักคณิตศาสตร์
+        selected_top_special = st.selectbox(
+            "📋 สภาพพิเศษอื่นๆ", 
+            ["เลือกดูสภาพพิเศษ..."] + special_conditions,
+            key="top_special_metric_dropdown",
+            label_visibility="visible"
+        )
+        if selected_top_special != "เลือกดูสภาพพิเศษ...":
+            spec_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == selected_top_special)])
+            st.markdown(f"<div style='font-size: 14px; font-weight: bold; color: #1d4ed8; text-align: center; margin-top: -8px;'>จำนวน: {spec_count} รายการ</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='font-size: 13px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกเพื่อดูจำนวน</div>", unsafe_allow_html=True)
+
+    st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
+
+    main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
+        "🔍 ค้นหา & บันทึกผล", 
+        "📱 ตรวจนับด้วยมือถือ (ยิงรหัส/ค้นหาด่วน)",
+        "🏷️ สร้าง QR Code", 
+        "📥 ส่งออกรายงาน Excel"
+    ])
     
     status_options = [
         "โปรดระบุสถานะ",
@@ -398,34 +415,29 @@ else:
     with main_tab1:
         st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
         
-        # --- 🎛️ จัดแบ่งเป็น 6 ช่องสมดุลกัน ---
-        c_s1, c_s2, c_s3, c_s4, c_s5, c_s6 = st.columns(6)
-        with c_s1:
-            search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลข...", key="search_main_1")
-        with c_s2:
-            condition_filter = st.selectbox("กรองสภาพ", ["ทั้งหมด"] + condition_options[1:], key="filter_cond_main_1")
-        with c_s3:
-            status_filter = st.selectbox("กรองสถานะ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
-        with c_s4:
-            # รายการ Dropdown สภาพพิเศษ (ตัด ปกติ และ ชำรุด/เสียหาย ออก)
-            special_conditions = [c for c in condition_options[3:]]
-            special_cond_filter = st.selectbox("สภาพพิเศษอื่นๆ", ["ทั้งหมด"] + special_conditions, key="filter_special_cond")
-        with c_s5:
-            inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจ...", key="filter_inspector")
-        with c_s6:
-            note_filter = st.text_input("กรองหมายเหตุ:", placeholder="คำค้นในหมายเหตุ...", key="filter_note")
+        # --- 🎛️ ฟิลเตอร์ค้นหาด้านล่าง 4 ช่องสมดุลสวยงาม ---
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        with col_s1:
+            search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์...", key="search_main_1")
+        with col_s2:
+            condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options[1:], key="filter_cond_main_1")
+        with col_s3:
+            status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด", "ตรวจแล้ว", "ยังไม่ตรวจ"], key="filter_main_1")
+        with col_s4:
+            inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
         
         display_df = df[valid_mask]
+        
+        # หากมีการเลือกสภาพพิเศษจากช่อง Metric ด้านบน ให้ผสานการกรองลงในตารางด้วยอัตโนมัติ
+        if selected_top_special != "เลือกดูสภาพพิเศษ...":
+            display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_special]
+
         if status_filter != "ทั้งหมด":
             display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
         if condition_filter != "ทั้งหมด":
             display_df = display_df[display_df['สภาพครุภัณฑ์'] == condition_filter]
-        if special_cond_filter != "ทั้งหมด":
-            display_df = display_df[display_df['สภาพครุภัณฑ์'] == special_cond_filter]
         if inspector_filter:
             display_df = display_df[display_df['ผู้ตรวจ'].astype(str).str.contains(inspector_filter, case=False, na=False)]
-        if note_filter:
-            display_df = display_df[display_df['หมายเหตุ'].astype(str).str.contains(note_filter, case=False, na=False)]
         if search_query:
             display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
