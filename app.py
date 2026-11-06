@@ -306,7 +306,7 @@ else:
     m2.metric("✔️ ตรวจแล้ว", checked_items)
     m3.metric("⏳ ยังไม่ตรวจ", unchecked_items)
     m4.metric("✅ สภาพปกติ", normal_count)
-    m5.metric("⚠️ ชำรุด/อื่นๆ", damaged_count)
+    m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
