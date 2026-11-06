@@ -391,7 +391,7 @@ else:
                 st.session_state.show_editor_modal = not st.session_state.show_editor_modal
                 st.rerun()
 
-        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo 1 Step ที่ใช้งานได้จริง
+        # หน้าต่างสำหรับแก้ไขข้อมูลตาราง พร้อมปุ่ม Undo 1 Step และผสานแถวใหม่เข้าตารางหลัก
         if st.session_state.show_editor_modal:
             st.markdown("---")
             st.markdown("#### 🛠️ หน้าต่างแก้ไขและปรับปรุงข้อมูลตารางครุภัณฑ์")
@@ -410,7 +410,6 @@ else:
             
             with col_undo_btn:
                 if st.button("↩️ Undo (ย้อนกลับ 1 Step)", use_container_width=True):
-                    # ย้อนกลับไปใช้ข้อมูลสเต็ปก่อนหน้า และเปลี่ยนเวอร์ชัน key เพื่อรีเซ็ตหน้าตาราง
                     st.session_state.editor_data_current = st.session_state.editor_data_undo.copy()
                     st.session_state.editor_key_ver += 1
                     st.toast("↩️ ย้อนกลับข้อมูล 1 Step เรียบร้อยแล้ว")
@@ -427,10 +426,39 @@ else:
 
             with col_save_btn:
                 if st.button("💾 บันทึกการแก้ไขข้อมูลทั้งหมด", type="primary", use_container_width=True):
-                    # สำรองข้อมูลปัจจุบันเก็บไว้ที่ undo ก่อนจะบันทึกค่าใหม่
+                    # เก็บประวัติก่อนหน้าสำหรับ Undo
                     st.session_state.editor_data_undo = st.session_state.editor_data_current.copy()
                     st.session_state.editor_data_current = edited_df.copy()
-                    st.success("✅ บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว!")
+
+                    # เติมค่าเริ่มต้นสำหรับคอลัมน์ตรวจสอบในแถวที่เพิ่มใหม่
+                    if 'สถานะการตรวจ' in edited_df.columns:
+                        edited_df['สถานะการตรวจ'] = edited_df['สถานะการตรวจ'].fillna('ยังไม่ตรวจ').replace('', 'ยังไม่ตรวจ')
+                    if 'สภาพครุภัณฑ์' in edited_df.columns:
+                        edited_df['สภาพครุภัณฑ์'] = edited_df['สภาพครุภัณฑ์'].fillna('-').replace('', '-')
+
+                    # นำข้อมูลที่แก้ไข/เพิ่มใหม่ ไปอัปเดตลงใน DataFrame หลัก (df)
+                    # โดยอิงตามหมายเลขครุภัณฑ์ (target_column)
+                    existing_codes = set(df[target_column].astype(str))
+                    new_rows = []
+
+                    for idx, row in edited_df.iterrows():
+                        code = str(row.get(target_column, '')).strip()
+                        if code and code != 'nan' and code != 'None':
+                            if code in existing_codes:
+                                # รายการเดิม: อัปเดตข้อมูลตามที่แก้
+                                mask = df[target_column].astype(str) == code
+                                for c in edited_df.columns:
+                                    if c in df.columns and c not in ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']:
+                                        df.loc[mask, c] = str(row[c])
+                            else:
+                                # รายการใหม่: เก็บไว้ต่อท้ายตารางหลัก
+                                new_rows.append(row)
+
+                    if new_rows:
+                        new_df = pd.DataFrame(new_rows)
+                        df = pd.concat([df, new_df], ignore_index=True)
+
+                    st.success("✅ บันทึกการแก้ไขและเพิ่มรายการใหม่เข้าสู่ระบบเรียบร้อยแล้ว!")
                     st.session_state.show_editor_modal = False
                     st.rerun()
 
