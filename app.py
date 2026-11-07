@@ -104,7 +104,7 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 🟢 ปรับแต่ง st.radio ให้วงกลมสถานะและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
+    /* 🟢 ตกแต่ง st.radio ให้วงกลมและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
     div.row-widget.stRadio > div[role="radiogroup"] {
         background-color: #f8fafc;
         padding: 10px 15px;
@@ -113,7 +113,6 @@ st.markdown("""
         display: flex;
         justify-content: space-around;
     }
-    /* เปลี่ยนสีวงกลมสถานะ (Radio Indicator) เป็นสีเขียวเมื่อถูกเลือก */
     div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
         background-color: #22c55e !important;
         border-color: #22c55e !important;
@@ -121,7 +120,6 @@ st.markdown("""
     div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
         background-color: #ffffff !important;
     }
-    /* เปลี่ยนสีตัวหนังสือของแท็บที่กำลังเลือกให้เป็นสีเขียวเข้มและหนาขึ้น */
     div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
         color: #15803d !important;
         font-weight: 800 !important;
@@ -458,7 +456,7 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ใช้ st.radio แนวนอน (ไม่มีวงกลมสีเขียวที่หัวข้อแท็บที่ 1, วงกลมสถานะและตัวหนังสือเปลี่ยนเป็นสีเขียวเมื่อเลือก) ---
+    # --- 🎛️ เมนูนำทาง (Tabs) ---
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
@@ -627,31 +625,35 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (ย่อช่องค้นหาด้านซ้ายครึ่งจอ)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
-        with st.container(border=True):
-            st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
-            
-            if "open_scanner" not in st.session_state:
-                st.session_state.open_scanner = False
-            
-            btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
-            if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
-                st.session_state.open_scanner = not st.session_state.open_scanner
-                st.rerun()
-            
-            if st.session_state.open_scanner:
-                render_live_qr_scanner()
+        # 🔽 แบ่งหน้าจอเป็นซ้าย 6 ส่วน ขวา 6 ส่วน เพื่อให้กรอบค้นหาย่อมาอยู่ครึ่งซ้าย
+        left_box, right_box = st.columns([6, 6])
+        
+        with left_box:
+            with st.container(border=True):
+                st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
+                
+                if "open_scanner" not in st.session_state:
+                    st.session_state.open_scanner = False
+                
+                btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
+                if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
+                    st.session_state.open_scanner = not st.session_state.open_scanner
+                    st.rerun()
+                
+                if st.session_state.open_scanner:
+                    render_live_qr_scanner()
 
-            mobile_search = st.text_input(
-                "พิมพ์ หรือวางหมายเลขครุภัณฑ์ที่สแกนได้:",
-                key="mob_input_box",
-                placeholder="พิมพ์รหัสครุภัณฑ์ แล้วกด Enter..."
-            )
+                mobile_search = st.text_input(
+                    "พิมพ์ หรือวางหมายเลขครุภัณฑ์ที่สแกนได้:",
+                    key="mob_input_box",
+                    placeholder="พิมพ์รหัสครุภัณฑ์ แล้วกด Enter..."
+                )
 
         if mobile_search and mobile_search.strip():
             kw = mobile_search.strip()
