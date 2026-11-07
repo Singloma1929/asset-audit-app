@@ -413,7 +413,7 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ระบบเมนูปุ่มกด Navigation (ถ้าปุ่มไหนถูกเลือก ตัวหนังสือจะเปลี่ยนเป็นสีเขียว พร้อมจุด 🟢) ---
+    # --- 🎛️ ระบบเมนูปุ่มกด Navigation ควบคุมสีตัวอักษรและจุด 🟢 เฉพาะปุ่มที่ Active ---
     if "active_menu" not in st.session_state:
         st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
 
@@ -452,26 +452,23 @@ else:
             st.session_state.active_menu = m4_name
             st.rerun()
 
-    # กำหนดสีตัวอักษรเฉพาะปุ่มที่กำลังทำงานอยู่ให้เป็นสีเขียวเข้มเด่นชัด
-    active_menu = st.session_state.active_menu
-    
-    color_1 = "#15803d" if is_active_1 else "#334155"
-    color_2 = "#15803d" if is_active_2 else "#334155"
-    color_3 = "#15803d" if is_active_3 else "#334155"
-    color_4 = "#15803d" if is_active_4 else "#334155"
+    # ใช้ CSS เจาะจงบังคับสีตัวอักษรตามสถานะ Active อย่างเด็ดขาด
+    color_1 = "#15803d !important" if is_active_1 else "#1e293b"
+    color_2 = "#15803d !important" if is_active_2 else "#1e293b"
+    color_3 = "#15803d !important" if is_active_3 else "#1e293b"
+    color_4 = "#15803d !important" if is_active_4 else "#1e293b"
 
-    weight_1 = "700" if is_active_1 else "500"
-    weight_2 = "700" if is_active_2 else "500"
-    weight_3 = "700" if is_active_3 else "500"
-    weight_4 = "700" if is_active_4 else "500"
+    weight_1 = "800" if is_active_1 else "600"
+    weight_2 = "800" if is_active_2 else "600"
+    weight_3 = "800" if is_active_3 else "600"
+    weight_4 = "800" if is_active_4 else "600"
 
     st.markdown(f"""
         <style>
-        /* จัดแต่งสีตัวอักษรและน้ำหนักของปุ่ม Navigation แบบแยกอิสระ */
-        div[data-testid="column"]:nth-of-type(1) button {{ color: {color_1} !important; font-weight: {weight_1} !important; border-radius: 8px; }}
-        div[data-testid="column"]:nth-of-type(2) button {{ color: {color_2} !important; font-weight: {weight_2} !important; border-radius: 8px; }}
-        div[data-testid="column"]:nth-of-type(3) button {{ color: {color_3} !important; font-weight: {weight_3} !important; border-radius: 8px; }}
-        div[data-testid="column"]:nth-of-type(4) button {{ color: {color_4} !important; font-weight: {weight_4} !important; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(1) button p {{ color: {color_1}; font-weight: {weight_1}; }}
+        div[data-testid="column"]:nth-of-type(2) button p {{ color: {color_2}; font-weight: {weight_2}; }}
+        div[data-testid="column"]:nth-of-type(3) button p {{ color: {color_3}; font-weight: {weight_3}; }}
+        div[data-testid="column"]:nth-of-type(4) button p {{ color: {color_4}; font-weight: {weight_4}; }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -481,6 +478,8 @@ else:
         "ตรวจแล้ว",
         "ยังไม่ตรวจ"
     ]
+
+    active_menu = st.session_state.active_menu
 
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
