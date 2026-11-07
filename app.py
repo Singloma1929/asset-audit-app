@@ -104,7 +104,7 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 🟢 ตกแต่ง st.radio ให้วงกลมและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
+    /* 🟢 ปรับแต่ง st.radio ให้วงกลมสถานะและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
     div.row-widget.stRadio > div[role="radiogroup"] {
         background-color: #f8fafc;
         padding: 10px 15px;
@@ -113,6 +113,7 @@ st.markdown("""
         display: flex;
         justify-content: space-around;
     }
+    /* เปลี่ยนสีวงกลมสถานะ (Radio Indicator) เป็นสีเขียวเมื่อถูกเลือก */
     div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
         background-color: #22c55e !important;
         border-color: #22c55e !important;
@@ -120,6 +121,7 @@ st.markdown("""
     div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
         background-color: #ffffff !important;
     }
+    /* เปลี่ยนสีตัวหนังสือของแท็บที่กำลังเลือกให้เป็นสีเขียวเข้มและหนาขึ้น */
     div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
         color: #15803d !important;
         font-weight: 800 !important;
@@ -130,7 +132,7 @@ st.markdown("""
 # หัวข้อโปรเจกต์
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Cloud Version)</div>", unsafe_allow_html=True)
 
-# 🔽 สร้างช่อง Dropdown สำหรับเลือกปีงบประมาณ ชิดซ้ายมือ
+# 🔽 ช่อง Dropdown เลือกปีงบประมาณ ชิดซ้ายมือ
 col_dropdown, col_space_drop = st.columns([2, 5])
 with col_dropdown:
     selected_fiscal_year = st.selectbox(
@@ -200,7 +202,6 @@ def get_shared_data(fiscal_year_str):
     for col in df.columns:
         df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
-    # ดึงข้อมูลจาก Supabase Cloud เฉพาะปีที่เลือก (กรองด้วย fiscal_year)
     if supabase:
         try:
             response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).execute()
@@ -295,7 +296,6 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
             "updated_at": timestamp,
             "fiscal_year": fiscal_year
         }
-        # บันทึกโดยอิงเงื่อนไขคู่กันระหว่าง asset_code และ fiscal_year
         supabase.table("core_assetauditrecord").upsert(data_payload, on_conflict="asset_code,fiscal_year").execute()
         return True
     except Exception as e:
@@ -458,68 +458,20 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ เมนูนำทาง (Tabs) ---
-    if "active_menu" not in st.session_state:
-        st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
-
+    # --- 🎛️ ใช้ st.radio แนวนอน (ไม่มีวงกลมสีเขียวที่หัวข้อแท็บที่ 1, วงกลมสถานะและตัวหนังสือเปลี่ยนเป็นสีเขียวเมื่อเลือก) ---
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
     m4_name = "📥 ส่งออกรายงาน Excel"
 
-    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    menu_options = [m1_name, m2_name, m3_name, m4_name]
 
-    with col_n1:
-        if st.button(m1_name, use_container_width=True, key="btn_m1"):
-            st.session_state.active_menu = m1_name
-            st.rerun()
-    with col_n2:
-        if st.button(m2_name, use_container_width=True, key="btn_m2"):
-            st.session_state.active_menu = m2_name
-            st.rerun()
-    with col_n3:
-        if st.button(m3_name, use_container_width=True, key="btn_m3"):
-            st.session_state.active_menu = m3_name
-            st.rerun()
-    with col_n4:
-        if st.button(m4_name, use_container_width=True, key="btn_m4"):
-            st.session_state.active_menu = m4_name
-            st.rerun()
-
-    active_m = st.session_state.active_menu
-
-    st.markdown(f"""
-        <style>
-        div[data-testid="column"]:nth-of-type(1) button {{
-            background-color: {"#dcfce7 !important" if active_m == m1_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m1_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m1_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m1_name else "600"};
-            border-radius: 8px;
-        }}
-        div[data-testid="column"]:nth-of-type(2) button {{
-            background-color: {"#dcfce7 !important" if active_m == m2_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m2_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m2_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m2_name else "600"};
-            border-radius: 8px;
-        }}
-        div[data-testid="column"]:nth-of-type(3) button {{
-            background-color: {"#dcfce7 !important" if active_m == m3_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m3_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m3_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m3_name else "600"};
-            border-radius: 8px;
-        }}
-        div[data-testid="column"]:nth-of-type(4) button {{
-            background-color: {"#dcfce7 !important" if active_m == m4_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m4_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m4_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m4_name else "600"};
-            border-radius: 8px;
-        }}
-        </style>
-    """, unsafe_allow_html=True)
+    selected_menu = st.radio(
+        "เลือกเมนูการทำงาน:",
+        options=menu_options,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
     st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
     
@@ -531,7 +483,7 @@ else:
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด
     # =========================================================================
-    if active_m == m1_name:
+    if selected_menu == m1_name:
         st.subheader(f"🔍 ค้นหาข้อมูลครุภัณฑ์ ({selected_fiscal_year})")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -633,7 +585,7 @@ else:
                             )
                             if ok:
                                 get_shared_data.clear()
-                                st.session_state.flash_success_msg = f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ({selected_fiscal_year}) เรียบร้อยแล้ว!"
+                                st.session_state.flash_success_msg = f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} เรียบร้อยแล้ว!"
                                 st.rerun()
 
                 else:
@@ -677,7 +629,7 @@ else:
     # =========================================================================
     # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    elif active_m == m2_name:
+    elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
@@ -810,7 +762,7 @@ else:
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    elif active_m == m3_name:
+    elif selected_menu == m3_name:
         st.subheader(f"🏷️ ระบบสร้าง QR Code ({selected_fiscal_year})")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
@@ -862,7 +814,7 @@ else:
     # =========================================================================
     # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    elif active_m == m4_name:
+    elif selected_menu == m4_name:
         st.subheader(f"📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบ ({selected_fiscal_year})")
         st.write("ข้อมูลการตรวจสอบทั้งหมดสามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
