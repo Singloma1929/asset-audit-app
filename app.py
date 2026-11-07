@@ -103,43 +103,42 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
-
-    /* 🟢 ตกแต่ง st.radio ให้วงกลมและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
-    div.row-widget.stRadio > div[role="radiogroup"] {
-        background-color: #f8fafc;
-        padding: 10px 15px;
-        border-radius: 12px;
-        border: 1px solid #cbd5e1;
-        display: flex;
-        justify-content: space-around;
-    }
-    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
-        background-color: #22c55e !important;
-        border-color: #22c55e !important;
-    }
-    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
-        background-color: #ffffff !important;
-    }
-    div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
-        color: #15803d !important;
-        font-weight: 800 !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 # หัวข้อโปรเจกต์
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Cloud Version)</div>", unsafe_allow_html=True)
+
+# 🔽 สร้างช่อง Dropdown สำหรับเลือกปีงบประมาณ ชิดซ้ายมือ
+col_dropdown, col_space_drop = st.columns([2, 5])
+with col_dropdown:
+    selected_fiscal_year = st.selectbox(
+        "📅 เลือกปีงบประมาณ",
+        options=["ปีงบฯ 2570 (ปัจจุบัน)", "ปีงบฯ 2569", "ปีงบฯ 2568"],
+        key="global_fiscal_year_select"
+    )
+
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
 header_row = 4
 
 @st.cache_resource
-def get_shared_data():
-    if os.path.exists("default_asset.xlsx"):
-        default_file = "default_asset.xlsx"
-    elif os.path.exists("default_asset.xls"):
-        default_file = "default_asset.xls"
+def get_shared_data(fiscal_year_str):
+    # กำหนดชื่อไฟล์ Excel ตามปีงบประมาณที่เลือก
+    if "2568" in fiscal_year_str:
+        file_candidates = ["default_asset_2568.xlsx", "default_asset_2568.xls", "default_asset.xlsx"]
+    elif "2569" in fiscal_year_str:
+        file_candidates = ["default_asset_2569.xlsx", "default_asset_2569.xls", "default_asset.xlsx"]
     else:
+        file_candidates = ["default_asset.xlsx", "default_asset.xls", "default_asset_2570.xlsx"]
+
+    default_file = None
+    for f in file_candidates:
+        if os.path.exists(f):
+            default_file = f
+            break
+
+    if not default_file:
         return None, None
 
     if default_file.endswith('.csv'):
@@ -178,16 +177,21 @@ def get_shared_data():
     for col in df.columns:
         df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
+    # ดึงข้อมูลจาก Supabase Cloud โดยกรองตามปีงบประมาณ (ใช้ asset_code เป็นหลัก และแยกตามปีถ้าต้องการ หรือใช้ตารางร่วมกัน)
     if supabase:
         try:
+            # ดึงข้อมูลทั้งหมดจากตาราง
             response = supabase.table("core_assetauditrecord").select("*").execute()
             saved_data = response.data
             
             if saved_data:
                 new_cloud_rows = []
                 for row in saved_data:
-                    code = str(row['asset_code']).strip()
+                    # ถ้ามีการเก็บแยกปีใน note หรือฟิลด์ ให้คัดกรองตามปีงบประมาณที่เลือก
                     raw_note = str(row['note']) if pd.notna(row['note']) else '-'
+                    
+                    # ตรวจสอบปีจากข้อมูลย้อนหลัง (ถ้ามีระบุปีในฐานข้อมูล) หรือดึงมาแสดงรวม
+                    code = str(row['asset_code']).strip()
                     
                     actual_note = raw_note
                     extra_info = {}
@@ -355,10 +359,11 @@ scanned_param = st.query_params.get("scan", "")
 if scanned_param and "mob_input_box" not in st.session_state:
     st.session_state.mob_input_box = str(scanned_param).strip()
 
-df, target_column = get_shared_data()
+# โหลดข้อมูลตามปีงบประมาณที่เลือกจาก Dropdown ด้านบน
+df, target_column = get_shared_data(selected_fiscal_year)
 
 if df is None:
-    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บน GitHub โปรดอัปโหลดไฟล์ข้อมูลเข้า GitHub ด้วยครับ")
+    st.error(f"⚠️ ไม่พบไฟล์ข้อมูลของ **{selected_fiscal_year}** บนระบบ โปรดตรวจสอบชื่อไฟล์ Excel บน GitHub อีกครั้งครับ")
 else:
     def is_valid_asset_code(val):
         if pd.isna(val):
@@ -383,7 +388,7 @@ else:
     bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
 
     st.markdown(
-        f"**ความคืบหน้าการตรวจสอบภาพรวม: {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)",
+        f"**ความคืบหน้าการตรวจสอบภาพรวม ({selected_fiscal_year}): {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)",
         unsafe_allow_html=True
     )
     st.markdown(
@@ -433,20 +438,68 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ใช้ st.radio แนวนอน (เลือกแท็บไหน วงกลม+ตัวหนังสือเปลี่ยนเป็นสีเขียวทันที) ---
+    # --- 🎛️ เมนูนำทาง (Tabs) ควบคุมสีตัวอักษรและสถานะ Active ---
+    if "active_menu" not in st.session_state:
+        st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
     m4_name = "📥 ส่งออกรายงาน Excel"
 
-    menu_options = [m1_name, m2_name, m3_name, m4_name]
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
 
-    selected_menu = st.radio(
-        "เลือกเมนูการทำงาน:",
-        options=menu_options,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    with col_n1:
+        if st.button(m1_name, use_container_width=True, key="btn_m1"):
+            st.session_state.active_menu = m1_name
+            st.rerun()
+    with col_n2:
+        if st.button(m2_name, use_container_width=True, key="btn_m2"):
+            st.session_state.active_menu = m2_name
+            st.rerun()
+    with col_n3:
+        if st.button(m3_name, use_container_width=True, key="btn_m3"):
+            st.session_state.active_menu = m3_name
+            st.rerun()
+    with col_n4:
+        if st.button(m4_name, use_container_width=True, key="btn_m4"):
+            st.session_state.active_menu = m4_name
+            st.rerun()
+
+    active_m = st.session_state.active_menu
+
+    st.markdown(f"""
+        <style>
+        div[data-testid="column"]:nth-of-type(1) button {{
+            background-color: {"#dcfce7 !important" if active_m == m1_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m1_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m1_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m1_name else "600"};
+            border-radius: 8px;
+        }}
+        div[data-testid="column"]:nth-of-type(2) button {{
+            background-color: {"#dcfce7 !important" if active_m == m2_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m2_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m2_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m2_name else "600"};
+            border-radius: 8px;
+        }}
+        div[data-testid="column"]:nth-of-type(3) button {{
+            background-color: {"#dcfce7 !important" if active_m == m3_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m3_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m3_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m3_name else "600"};
+            border-radius: 8px;
+        }}
+        div[data-testid="column"]:nth-of-type(4) button {{
+            background-color: {"#dcfce7 !important" if active_m == m4_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m4_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m4_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m4_name else "600"};
+            border-radius: 8px;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
 
     st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
     
@@ -458,8 +511,8 @@ else:
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
-    if selected_menu == m1_name:
-        st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
+    if active_m == m1_name:
+        st.subheader(f"🔍 ค้นหาข้อมูลครุภัณฑ์ ({selected_fiscal_year})")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
@@ -497,7 +550,7 @@ else:
             st.download_button(
                 label="📥 ดาวน์โหลดรายการที่แสดงนี้ (Excel)",
                 data=filtered_data,
-                file_name=f"รายงานครุภัณฑ์_เฉพาะที่กรอง_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
+                file_name=f"รายงานครุภัณฑ์_{selected_fiscal_year}_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
@@ -506,7 +559,7 @@ else:
         enable_admin_tools = st.checkbox("⚙️ เปิดใช้งานโหมด: แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (สำหรับผู้ดูแลระบบ)", value=False)
         
         if enable_admin_tools:
-            st.markdown("### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (ซิงค์ขึ้น Cloud)")
+            st.markdown(f"### 🛠️ แก้ไขรายละเอียดครุภัณฑ์ ({selected_fiscal_year})")
             
             with st.container(border=True):
                 mode_select = st.radio(
@@ -527,7 +580,7 @@ else:
                     target_row = df[df[target_column].astype(str).str.strip() == str(edit_target).strip()].iloc[0]
                     
                     with st.form("cloud_edit_asset_form"):
-                        st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ (รวมถึงช่อง 'หมายเหตุ') แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
+                        st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
                         updated_values = {}
                         cols_ui = st.columns(3)
                         
@@ -559,13 +612,13 @@ else:
                             )
                             if ok:
                                 get_shared_data.clear()
-                                st.session_state.flash_success_msg = f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!"
+                                st.session_state.flash_success_msg = f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} เรียบร้อยแล้ว!"
                                 st.rerun()
 
                 else:
                     with st.form("cloud_add_asset_form"):
-                        st.caption("กรอกหมายเลขครุภัณฑ์ใหม่ (ต้องมีตัวเลข) และรายละเอียด รวมถึงช่อง 'หมายเหตุ' เพื่อเพิ่มเข้าสู่ระบบ Cloud ถาวร")
-                        new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข เช่น 605-012600-30099)")
+                        st.caption("กรอกหมายเลขครุภัณฑ์ใหม่และรายละเอียดเพื่อเพิ่มเข้าสู่ระบบ Cloud")
+                        new_code = st.text_input(f"🌟 {target_column} (จำเป็นต้องกรอกและมีตัวเลข)")
                         
                         new_values = {}
                         cols_ui = st.columns(3)
@@ -580,9 +633,9 @@ else:
                         save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
                         if save_new_cloud:
                             if not is_valid_asset_code(new_code):
-                                st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง (ต้องมีตัวเลขผสมอยู่ด้วยครับ)")
+                                st.error(f"⚠️ กรุณากรอก '{target_column}' ให้ถูกต้อง")
                             elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
-                                st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
+                                st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว")
                             else:
                                 new_values['หมายเหตุ_ข้อมูลหลัก'] = new_note_val
                                 ok = save_progress_to_supabase(
@@ -596,14 +649,14 @@ else:
                                 )
                                 if ok:
                                     get_shared_data.clear()
-                                    st.session_state.flash_success_msg = f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code.strip()} ขึ้น Cloud สำเร็จแล้ว!"
+                                    st.session_state.flash_success_msg = f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code.strip()} สำเร็จแล้ว!"
                                     st.rerun()
 
     # =========================================================================
     # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    elif selected_menu == m2_name:
-        st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
+    elif active_m == m2_name:
+        st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
         with st.container(border=True):
@@ -620,11 +673,10 @@ else:
             if st.session_state.open_scanner:
                 render_live_qr_scanner()
 
-            # ปรับช่องค้นหาให้ขยายเต็มความกว้าง (เอาปุ่มล้างค่าออกแล้วเพื่อให้ใช้งานง่ายและไม่เกิด Error)
             mobile_search = st.text_input(
                 "พิมพ์ หรือวางหมายเลขครุภัณฑ์ที่สแกนได้:",
                 key="mob_input_box",
-                placeholder="พิมพ์รหัสครุภัณฑ์ (เช่น 100000019495) แล้วกด Enter..."
+                placeholder="พิมพ์รหัสครุภัณฑ์ แล้วกด Enter..."
             )
 
         if mobile_search and mobile_search.strip():
@@ -725,18 +777,18 @@ else:
                             if ok:
                                 get_shared_data.clear()
                                 st.session_state.open_scanner = False
-                                st.session_state.flash_success_msg = f"✅ บันทึกผลการตรวจครุภัณฑ์หมายเลข {mob_target} ลง Supabase Cloud สำเร็จเรียบร้อย!"
+                                st.session_state.flash_success_msg = f"✅ บันทึกผลการตรวจครุภัณฑ์หมายเลข {mob_target} เรียบร้อย!"
                                 st.rerun()
             else:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ กรุณาตรวจสอบความถูกต้องอีกครั้งครับ")
         else:
-            st.info("👈 กรุณาพิมพ์หมายเลขครุภัณฑ์, ชื่อรายการ หรือใช้กล้อง **'📷 กดปุ่มสแกน QR Code'** ด้านบนเพื่อค้นหาและบันทึกผลการตรวจครับ")
+            st.info("👈 กรุณาพิมพ์หมายเลขครุภัณฑ์ หรือใช้กล้อง **'📷 กดปุ่มสแกน QR Code'** ด้านบนเพื่อค้นหาและบันทึกผลการตรวจครับ")
 
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    elif selected_menu == m3_name:
-        st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
+    elif active_m == m3_name:
+        st.subheader(f"🏷️ ระบบสร้าง QR Code ({selected_fiscal_year})")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
         if selected_qr_item:
@@ -787,9 +839,9 @@ else:
     # =========================================================================
     # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    elif selected_menu == m4_name:
-        st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
-        st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
+    elif active_m == m4_name:
+        st.subheader(f"📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบ ({selected_fiscal_year})")
+        st.write("ข้อมูลการตรวจสอบทั้งหมดสามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
         output_buffer = BytesIO()
         df[valid_mask].to_excel(output_buffer, index=False)
@@ -797,8 +849,8 @@ else:
         
         thai_now = datetime.utcnow() + timedelta(hours=7)
         st.download_button(
-            label="📊 ดาวน์โหลดรายงาน Excel ผลการตรวจทั้งหมด",
+            label=f"📊 ดาวน์โหลดรายงาน Excel ของ {selected_fiscal_year}",
             data=output_data,
-            file_name=f"รายงานผลการตรวจครุภัณฑ์_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
+            file_name=f"รายงานผลการตรวจครุภัณฑ์_{selected_fiscal_year}_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
