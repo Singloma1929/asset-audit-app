@@ -104,57 +104,68 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 🎨 ดีไซน์ปรับสีพื้นหลังและกรอบของ Tabs แต่ละแท็บให้ชัดเจนสวยงาม */
+    /* 🎨 จัดแต่งพื้นหลังกลุ่มแท็บเมนู */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: #e2e8f0;
+        gap: 12px;
+        background-color: #f1f5f9;
         padding: 12px;
         border-radius: 12px;
+        border: 1px solid #cbd5e1;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 48px;
+        height: 46px;
         border-radius: 8px;
         font-weight: 700;
         font-size: 14px;
-        padding: 0 18px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 0 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         transition: all 0.2s ease-in-out;
     }
-    
-    /* 1. แท็บค้นหา (โทนสีฟ้าอ่อน) */
-    .stTabs [data-baseweb="tab"]:nth-of-type(1) {
-        background-color: #dbeafe !important;
-        border: 2px solid #93c5fd !important;
-        color: #1e40af !important;
-    }
-    /* 2. แท็บตรวจครุภัณฑ์ (โทนสีเขียวอ่อน) */
-    .stTabs [data-baseweb="tab"]:nth-of-type(2) {
-        background-color: #dcfce7 !important;
-        border: 2px solid #86efac !important;
-        color: #166534 !important;
-    }
-    /* 3. แท็บสร้าง QR Code (โทนสีเหลือง/ส้มอ่อน) */
-    .stTabs [data-baseweb="tab"]:nth-of-type(3) {
-        background-color: #fef3c7 !important;
-        border: 2px solid #fde047 !important;
-        color: #92400e !important;
-    }
-    /* 4. แท็บส่งออกรายงาน (โทนสีม่วงอ่อน) */
-    .stTabs [data-baseweb="tab"]:nth-of-type(4) {
-        background-color: #f3e8ff !important;
-        border: 2px solid #d8b4fe !important;
-        color: #6b21a8 !important;
-    }
-
-    /* 🌟 สไตล์เมื่อแท็บนั้นถูกคลิกเลือก (Active Tab) จะเด่นชัดขึ้นมา */
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: linear-gradient(135deg, #0f172a, #1e293b) !important;
-        color: #ffffff !important;
-        border: 2px solid #0f172a !important;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-        font-size: 15px !important;
-    }
     </style>
+""", unsafe_allow_html=True)
+
+# 🛠️ ใช้ JavaScript ช่วยบังคับเปลี่ยนสีพื้นหลังและสีข้อความของแต่ละ Tab ให้แตกต่างกันอย่างชัดเจน 100%
+st.markdown("""
+    <script>
+    const setTabColors = () => {
+        const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
+        if (tabs.length >= 4) {
+            // แท็บที่ 1: ค้นหา (สีฟ้า)
+            tabs[0].style.backgroundColor = '#dbeafe';
+            tabs[0].style.color = '#1e40af';
+            tabs[0].style.border = '2px solid #93c5fd';
+            
+            // แท็บที่ 2: ตรวจครุภัณฑ์ (สีเขียว)
+            tabs[1].style.backgroundColor = '#dcfce7';
+            tabs[1].style.color = '#166534';
+            tabs[1].style.border = '2px solid #86efac';
+            
+            // แท็บที่ 3: QR Code (สีส้ม/เหลือง)
+            tabs[2].style.backgroundColor = '#fef3c7';
+            tabs[2].style.color = '#92400e';
+            tabs[2].style.border = '2px solid #fde047';
+            
+            // แท็บที่ 4: ส่งออกรายงาน (สีม่วง)
+            tabs[3].style.backgroundColor = '#f3e8ff';
+            tabs[3].style.color = '#6b21a8';
+            tabs[3].style.border = '2px solid #d8b4fe';
+
+            // จัดการแท็บที่ถูกเลือก (Active Tab) ให้เด่นชัด
+            tabs.forEach(tab => {
+                if (tab.getAttribute('aria-selected') === 'true') {
+                    tab.style.background = 'linear-gradient(135deg, #0f172a, #1e293b)';
+                    tab.style.color = '#ffffff';
+                    tab.style.border = '2px solid #0f172a';
+                    tab.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)';
+                }
+            });
+        }
+    };
+    // รันสคริปต์ทันทีและคอยดักฟังการคลิกเปลี่ยนแท็บ
+    window.addEventListener('DOMContentLoaded', setTabColors);
+    setTimeout(setTabColors, 100);
+    document.addEventListener('click', () => setTimeout(setTabColors, 50));
+    </script>
 """, unsafe_allow_html=True)
 
 # หัวข้อโปรเจกต์
@@ -464,7 +475,7 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # 4 แท็บเมนู พร้อมดีไซน์สีสันสวยงามแยกชัดเจนตามคำขอ
+    # 4 แท็บเมนูหลัก
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
         "🔍 ค้นหา/โหมดแก้ไขรายละเอียด", 
         "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ",
@@ -682,7 +693,7 @@ else:
                         render_status_badge(
                             target_row_data['สถานะการตรวจ'],
                             target_row_data['สภาพครุภัณฑ์'],
-                            target_row['ผู้ตรวจ'] if 'ผู้ตรวจ' in target_row else target_row_data['ผู้ตรวจ']
+                            target_row_data['ผู้ตรวจ']
                         )
                     with col_info_details:
                         st.markdown(f"**ชื่อรายการ:** {target_row_data.get('รายการ', '-')}")
