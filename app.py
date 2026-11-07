@@ -314,6 +314,7 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
+# 🔄 ปรับปรุงสคริปต์กล้องให้ส่งค่าผ่าน URL Query Parameter แล้วสั่ง st.rerun() ทันที
 def render_scanner_with_auto_extract():
     scanner_html = """
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
@@ -336,23 +337,9 @@ def render_scanner_with_auto_extract():
                     code = code.split("?scan=").pop().trim();
                 }
                 
-                // ส่งรหัสเข้าช่องกรอก และจำลองการกดปุ่มค้นหาอัตโนมัติทันที
-                const streamlitInput = window.parent.document.querySelector('input[aria-label="กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"]');
-                if (streamlitInput) {
-                    streamlitInput.value = code;
-                    streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    streamlitInput.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                
-                setTimeout(() => {
-                    const buttons = window.parent.document.querySelectorAll('button');
-                    for (let btn of buttons) {
-                        if (btn.innerText.includes("🔍 ค้นหา")) {
-                            btn.click();
-                            break;
-                        }
-                    }
-                }, 200);
+                // สั่งเปลี่ยน URL เพื่อส่งค่ารหัสกลับมาที่ Streamlit และรีเฟรชหน้าจออัตโนมัติ
+                const currentUrl = window.location.href.split('?')[0];
+                window.location.href = currentUrl + "?scan=" + encodeURIComponent(code);
                 
                 html5QrCode.stop().catch(err => {});
             },
@@ -370,10 +357,13 @@ if "flash_success_msg" in st.session_state:
     st.success(st.session_state.flash_success_msg)
     del st.session_state.flash_success_msg
 
+# 📥 รับค่ารหัสจากกล้องผ่าน URL Query Parameter
 scanned_param = st.query_params.get("scan", "")
-if scanned_param and "scanned_asset_box" not in st.session_state:
+if scanned_param:
     st.session_state.scanned_asset_box = str(scanned_param).strip()
-    st.session_state.auto_scanned_trigger = True
+    st.session_state.active_search_query = str(scanned_param).strip()
+    # ล้างค่า query param ทิ้งเพื่อไม่ให้ค้างเวลาเปลี่ยนหน้า
+    st.query_params.clear()
 
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
 
@@ -622,7 +612,7 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search & Pop-up แจ้งเตือนสถานะ)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search ทันทีหลังสแกนสำเร็จ)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
@@ -659,16 +649,10 @@ else:
 
         active_search_val = scanned_code_input.strip() if scanned_code_input else ""
 
-        # ตรวจสอบการค้นหาอัตโนมัติจากการสแกนหรือกดปุ่ม
-        is_auto_scanned = st.session_state.get("auto_scanned_trigger", False)
-        if is_auto_scanned:
-            st.session_state.auto_scanned_trigger = False
-            search_triggered_mid = True
-
         if search_triggered_mid and active_search_val:
             st.session_state.active_search_query = active_search_val
             
-            # ตรวจสอบว่าพบข้อมูลหรือไม่เพื่อแสดง Pop-up แจ้งเตือน
+            # ตรวจสอบว่าพบข้อมูลหรือไม่เพื่อแสดง Pop-up แจ้งเตือนสั้นๆ
             check_kw = active_search_val
             check_match = valid_df[
                 valid_df[target_column].astype(str).str.strip().str.contains(check_kw, case=False, na=False)
