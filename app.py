@@ -21,7 +21,7 @@ def init_supabase():
     try:
         if SUPABASE_URL and SUPABASE_KEY:
             return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
+    except Exception:
         return None
     return None
 
@@ -48,8 +48,8 @@ st.markdown("""
         margin-bottom: 12px;
     }
     .stAlert {
-        padding: 4px 12px !important;
-        margin-bottom: 0px !important;
+        padding: 8px 14px !important;
+        margin-bottom: 8px !important;
     }
     .status-box-green {
         background-color: #d4edda;
@@ -186,10 +186,11 @@ def get_shared_data():
                         df.loc[mask, 'ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
                         
-                        if extra_info and 'หมายเหตุ_ข้อมูลหลัก' in extra_info:
-                            df.loc[mask, 'หมายเหตุ'] = extra_info['หมายเหตุ_ข้อมูลหลัก']
-                        elif actual_note != '-':
+                        # ให้ความสำคัญกับ actual_note ล่าสุดเสมอ และรองรับหมายเหตุจากโหมดแก้ไขข้อมูลหลัก
+                        if actual_note != '-':
                             df.loc[mask, 'หมายเหตุ'] = actual_note
+                        elif extra_info and 'หมายเหตุ_ข้อมูลหลัก' in extra_info:
+                            df.loc[mask, 'หมายเหตุ'] = extra_info['หมายเหตุ_ข้อมูลหลัก']
 
                         for col_k, val_v in extra_info.items():
                             if col_k in df.columns:
@@ -199,7 +200,7 @@ def get_shared_data():
                         new_r[target_col] = code
                         new_r['สภาพครุภัณฑ์'] = str(row['condition']) if pd.notna(row['condition']) else '-'
                         new_r['สถานะการตรวจ'] = str(row['status']) if pd.notna(row['status']) else 'ยังไม่ตรวจ'
-                        new_r['หมายเหตุ'] = actual_note if actual_note != '-' else '-'
+                        new_r['หมายเหตุ'] = actual_note if actual_note != '-' else extra_info.get('หมายเหตุ_ข้อมูลหลัก', '-')
                         new_r['ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
                         new_r['วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
                         
@@ -217,11 +218,13 @@ def get_shared_data():
     return df, target_col
 
 def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, extra_dict=None):
+    """บันทึกผลการตรวจและข้อมูลรายละเอียดครุภัณฑ์ลงใน Supabase Cloud ทันที พร้อมคืนค่าสถานะสำเร็จ"""
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
-        return
+        return False
     try:
-        existing = supabase.table("core_assetauditrecord").select("note").eq("asset_code", str(asset_code)).execute()
+        clean_code = str(asset_code).strip()
+        existing = supabase.table("core_assetauditrecord").select("note").eq("asset_code", clean_code).execute()
         saved_extra = {}
         if existing.data:
             old_note = str(existing.data[0].get("note", ""))
@@ -231,14 +234,20 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
                 except Exception:
                     saved_extra = {}
         
+        clean_note = str(note).split("||ASSET_DATA||")[0].strip()
+        if not clean_note:
+            clean_note = "-"
+
         if extra_dict is not None:
             saved_extra.update(extra_dict)
+        elif 'หมายเหตุ_ข้อมูลหลัก' in saved_extra:
+            # อัปเดตหมายเหตุใน JSON ให้ตรงกับหมายเหตุล่าสุดที่ผู้ตรวจบันทึก
+            saved_extra['หมายเหตุ_ข้อมูลหลัก'] = clean_note
             
-        clean_note = str(note).split("||ASSET_DATA||")[0]
         final_note = f"{clean_note}||ASSET_DATA||{json.dumps(saved_extra, ensure_ascii=False)}" if saved_extra else clean_note
 
         data_payload = {
-            "asset_code": str(asset_code).strip(),
+            "asset_code": clean_code,
             "condition": condition,
             "status": status,
             "note": final_note,
@@ -246,8 +255,10 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
             "updated_at": timestamp
         }
         supabase.table("core_assetauditrecord").upsert(data_payload, on_conflict="asset_code").execute()
+        return True
     except Exception as e:
         st.error(f"⚠️ ไม่สามารถบันทึกลง Supabase ได้: {e}")
+        return False
 
 def render_status_badge(status_val, cond_val, inspector_val):
     if status_val == 'ตรวจแล้ว':
@@ -318,10 +329,21 @@ def render_live_qr_scanner():
     """
     return components.html(scanner_html, height=390)
 
+# แสดงข้อความแจ้งเตือนหลังรีโหลดหน้าเว็บ (ถ้ามี)
+if "flash_success_msg" in st.session_state:
+    st.toast(st.session_state.flash_success_msg, icon="✅")
+    st.success(st.session_state.flash_success_msg)
+    del st.session_state.flash_success_msg
+
+# รองรับการเปิดผ่านลิงก์ QR Code (?scan=...)
+scanned_param = st.query_params.get("scan", "")
+if scanned_param and "mob_input_box" not in st.session_state:
+    st.session_state.mob_input_box = str(scanned_param).strip()
+
 df, target_column = get_shared_data()
 
 if df is None:
-    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บน GitHub โปรดอัปโหลดไฟล์ข้อมูลงสานเข้า GitHub ด้วยครับ")
+    st.error("⚠️ ไม่พบไฟล์ข้อมูลกลาง 'default_asset.xlsx' หรือ 'default_asset.xls' บน GitHub โปรดอัปโหลดไฟล์ข้อมูลเข้า GitHub ด้วยครับ")
 else:
     def is_valid_asset_code(val):
         if pd.isna(val):
@@ -396,9 +418,10 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
+    # เปลี่ยนชื่อ Tab 1 และ Tab 2 ตามที่ผู้ใช้ต้องการ
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
-        "🔍 ค้นหา & บันทึกผล", 
-        "📱 ตรวจนับด้วยมือถือ (ยิงรหัส/ค้นหาด่วน)",
+        "🔍 ค้นหา", 
+        "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ",
         "🏷️ สร้าง QR Code", 
         "📥 ส่งออกรายงาน Excel"
     ])
@@ -408,12 +431,15 @@ else:
         "ยังไม่ตรวจ"
     ]
 
+    # =========================================================================
+    # TAB 1: ค้นหา และ ส่งออกตารางที่ค้นหา (รวมถึงเครื่องมือผู้ดูแลระบบด้านล่างสุด)
+    # =========================================================================
     with main_tab1:
-        st.subheader("ค้นหาและบันทึกผลการตรวจสอบครุภัณฑ์รายชิ้น")
+        st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
-            search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์...", key="search_main_1")
+            search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์, สถานที่...", key="search_main_1")
         with col_s2:
             condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options, key="filter_cond_main_1")
         with col_s3:
@@ -452,81 +478,7 @@ else:
                 use_container_width=True
             )
 
-        st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
-        st.markdown("### 📝 บันทึก/อัปเดตผลการตรวจสอบ")
-        with st.container(border=True):
-            col_item, col_badge = st.columns([1.2, 1.8])
-            with col_item:
-                item_target = st.selectbox(
-                    f"เลือกรายการ ({target_column})",
-                    options=df[valid_mask][target_column].tolist(),
-                    key="main_item_select"
-                )
-            with col_badge:
-                st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
-                current_row = df[df[target_column].astype(str) == str(item_target)].iloc[0]
-                render_status_badge(
-                    current_row['สถานะการตรวจ'],
-                    current_row['สภาพครุภัณฑ์'],
-                    current_row['ผู้ตรวจ']
-                )
-
-            with st.form("audit_form_main", border=False):
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    new_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options)
-                with c2:
-                    new_status = st.selectbox("2. สถานะการตรวจ", status_options)
-                with c3:
-                    note_text = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)")
-                with c4:
-                    inspector_name = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)")
-                
-                btn_col, save_status_col = st.columns([1.2, 1.8])
-                with btn_col:
-                    submit_button = st.form_submit_button(label="💾 บันทึกผลการตรวจรายการนี้", use_container_width=True)
-                with save_status_col:
-                    render_save_status_badge(
-                        current_row['สถานะการตรวจ'],
-                        current_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ']
-                    )
-                
-                if submit_button:
-                    thai_time = datetime.utcnow() + timedelta(hours=7)
-                    current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
-                    
-                    mask = df[target_column].astype(str) == str(item_target)
-                    if new_status == "ยังไม่ตรวจ":
-                        save_condition = '-'
-                        save_status = 'ยังไม่ตรวจ'
-                        save_note = '-'
-                        save_inspector = '-'
-                        save_time = '-'
-                    else:
-                        save_condition = new_condition
-                        save_status = new_status
-                        save_note = note_text.strip() if note_text.strip() else '-'
-                        save_inspector = inspector_name if inspector_name.strip() else '-'
-                        save_time = current_time
-                    
-                    df.loc[mask, 'สภาพครุภัณฑ์'] = save_condition
-                    df.loc[mask, 'สถานะการตรวจ'] = save_status
-                    df.loc[mask, 'หมายเหตุ'] = save_note
-                    df.loc[mask, 'ผู้ตรวจ'] = save_inspector
-                    df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = save_time
-                    
-                    save_progress_to_supabase(
-                        asset_code=item_target,
-                        condition=save_condition,
-                        status=save_status,
-                        note=save_note,
-                        inspector=save_inspector,
-                        timestamp=save_time
-                    )
-                    get_shared_data.clear()
-                    st.success(f"✅ บันทึกผลรายการ {item_target} ลง Supabase Cloud เรียบร้อยแล้ว!")
-                    st.rerun()
-
+        # ส่วนของแอดมินสำหรับแก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (คงไว้ด้านล่างสุดและซ่อนด้วย Checkbox)
         st.markdown("<hr style='margin: 16px 0px;'>", unsafe_allow_html=True)
         enable_admin_tools = st.checkbox("⚙️ เปิดใช้งานโหมด: แก้ไขรายละเอียดครุภัณฑ์ / เพิ่มรายการใหม่ (สำหรับผู้ดูแลระบบ)", value=False)
         
@@ -549,7 +501,7 @@ else:
                         options=df[valid_mask][target_column].tolist(),
                         key="cloud_edit_item_select"
                     )
-                    target_row = df[df[target_column].astype(str) == str(edit_target)].iloc[0]
+                    target_row = df[df[target_column].astype(str).str.strip() == str(edit_target).strip()].iloc[0]
                     
                     with st.form("cloud_edit_asset_form"):
                         st.caption("พิมพ์แก้ไขข้อมูลในช่องที่ต้องการ (รวมถึงช่อง 'หมายเหตุ') แล้วกดปุ่มบันทึกด้านล่างเพื่ออัปเดตขึ้น Cloud")
@@ -573,7 +525,7 @@ else:
                         save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
                         if save_edit_cloud:
                             updated_values['หมายเหตุ_ข้อมูลหลัก'] = note_input_val
-                            save_progress_to_supabase(
+                            ok = save_progress_to_supabase(
                                 asset_code=edit_target,
                                 condition=target_row['สภาพครุภัณฑ์'],
                                 status=target_row['สถานะการตรวจ'],
@@ -582,9 +534,10 @@ else:
                                 timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
                                 extra_dict=updated_values
                             )
-                            get_shared_data.clear()
-                            st.success(f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!")
-                            st.rerun()
+                            if ok:
+                                get_shared_data.clear()
+                                st.session_state.flash_success_msg = f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} ขึ้น Cloud เรียบร้อยแล้ว!"
+                                st.rerun()
 
                 else:
                     with st.form("cloud_add_asset_form"):
@@ -609,7 +562,7 @@ else:
                                 st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว กรุณาใช้โหมด 'แก้ไขข้อมูลครุภัณฑ์เดิม' แทนครับ")
                             else:
                                 new_values['หมายเหตุ_ข้อมูลหลัก'] = new_note_val
-                                save_progress_to_supabase(
+                                ok = save_progress_to_supabase(
                                     asset_code=new_code.strip(),
                                     condition="-",
                                     status="ยังไม่ตรวจ",
@@ -618,13 +571,17 @@ else:
                                     timestamp="-",
                                     extra_dict=new_values
                                 )
-                                get_shared_data.clear()
-                                st.success(f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code} ขึ้น Cloud สำเร็จแล้ว!")
-                                st.rerun()
+                                if ok:
+                                    get_shared_data.clear()
+                                    st.session_state.flash_success_msg = f"✅ เพิ่มรายการครุภัณฑ์ใหม่ {new_code.strip()} ขึ้น Cloud สำเร็จแล้ว!"
+                                    st.rerun()
 
+    # =========================================================================
+    # TAB 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ
+    # =========================================================================
     with main_tab2:
-        st.subheader("📱 โหมดตรวจนับหน้างานผ่านมือถือ")
-        st.write("ใช้สำหรับเปิดผ่านมือถือหน้างาน เดินตรวจทีละชิ้นโดยสแกน QR Code หรือพิมพ์หมายเลขครุภัณฑ์")
+        st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
+        st.write("ใช้สำหรับตรวจครุภัณฑ์ทั้งบนคอมพิวเตอร์และมือถือ สามารถสแกน QR Code พิมพ์ค้นหา หรือเลือกรายการเพื่อบันทึกและแก้ไขผลการตรวจได้ทันที")
         
         with st.container(border=True):
             st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
@@ -640,51 +597,96 @@ else:
             if st.session_state.open_scanner:
                 render_live_qr_scanner()
 
-            mobile_search = st.text_input(
-                "พิมพ์หรือยิงบาร์โค้ดหมายเลขครุภัณฑ์ที่นี่ (แตะค้างแล้วกด 'วาง'):",
-                value="",
-                key="mob_input_box"
-            )
+            col_mob_search, col_mob_clear = st.columns([4, 1])
+            with col_mob_search:
+                mobile_search = st.text_input(
+                    "พิมพ์ค้นหา หรือวางหมายเลขครุภัณฑ์ที่สแกนได้ (หากไม่พิมพ์จะแสดงรายการทั้งหมดให้เลือกด้านล่าง):",
+                    key="mob_input_box",
+                    placeholder="พิมพ์รหัสครุภัณฑ์ หรือชื่อรายการ แล้วกด Enter..."
+                )
+            with col_mob_clear:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("🔄 ล้างคำค้นหา", use_container_width=True):
+                    st.session_state.mob_input_box = ""
+                    st.query_params.clear()
+                    st.rerun()
 
-        if mobile_search:
-            matched_mob = df[valid_mask][df[valid_mask][target_column].astype(str).str.contains(mobile_search, case=False, na=False)]
-            
-            if not matched_mob.empty:
-                st.success(f"🎯 พบข้อมูลทั้งหมด {len(matched_mob)} รายการ")
+        # กรองรายการตามคำค้นหา (ถ้าไม่ได้พิมพ์ค้นหา ให้แสดงรายการทั้งหมดเพื่อให้เลือกบันทึกได้ทันทีโดยไม่หลุดโฟกัส)
+        if mobile_search and mobile_search.strip():
+            kw = mobile_search.strip()
+            matched_mob = valid_df[
+                valid_df.astype(str).apply(lambda x: x.str.contains(kw, case=False, na=False)).any(axis=1)
+            ]
+        else:
+            matched_mob = valid_df
+
+        if not matched_mob.empty:
+            if mobile_search and mobile_search.strip():
+                st.success(f"🎯 พบข้อมูลที่ตรงกับคำค้นหาทั้งหมด {len(matched_mob)} รายการ")
                 st.dataframe(matched_mob, use_container_width=True)
+            
+            st.markdown("### 📝 บันทึก / แก้ไขผลการตรวจสอบ")
+            with st.container(border=True):
+                m_col_item, m_col_badge = st.columns([1.2, 1.8])
                 
-                st.markdown("### 📝 บันทึกผลการตรวจหน้างาน")
-                with st.container(border=True):
-                    m_col_item, m_col_badge = st.columns([1.2, 1.8])
-                    with m_col_item:
-                        mob_target = st.selectbox(
-                            "เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก",
-                            options=matched_mob[target_column].tolist(),
-                            key="mob_item_select"
-                        )
-                    with m_col_badge:
-                        st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
-                        mob_row = df[df[target_column].astype(str) == str(mob_target)].iloc[0]
-                        render_status_badge(
-                            mob_row['สถานะการตรวจ'],
-                            mob_row['สภาพครุภัณฑ์'],
-                            mob_row['ผู้ตรวจ']
-                        )
+                # สร้างรายการตัวเลือกโดยแสดงทั้งรหัสและชื่อรายการ (ถ้ามี) เพื่อให้เลือกง่ายขึ้น
+                code_list = matched_mob[target_column].astype(str).str.strip().unique().tolist()
+                
+                with m_col_item:
+                    mob_target = st.selectbox(
+                        f"เลือกหมายเลขครุภัณฑ์ที่ต้องการบันทึก ({len(code_list)} รายการ)",
+                        options=code_list,
+                        key="mob_item_select"
+                    )
+                
+                mob_row = df[df[target_column].astype(str).str.strip() == str(mob_target).strip()].iloc[0]
+                
+                with m_col_badge:
+                    st.markdown("<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>สถานะปัจจุบันของรายการนี้</div>", unsafe_allow_html=True)
+                    render_status_badge(
+                        mob_row['สถานะการตรวจ'],
+                        mob_row['สภาพครุภัณฑ์'],
+                        mob_row['ผู้ตรวจ']
+                    )
 
-                    # 💡 ปรับเปลี่ยนเป็นแบบปุ่มกดธรรมดานอก st.form เพื่อให้การบันทึกทำงานได้ 100%
+                # แสดงรายละเอียดของรายการที่เลือกให้เห็นชัดเจนก่อนบันทึก
+                with st.expander("📋 ดูรายละเอียดครุภัณฑ์รายการนี้", expanded=not bool(mobile_search.strip())):
+                    st.dataframe(df[df[target_column].astype(str).str.strip() == str(mob_target).strip()], use_container_width=True)
+
+                # ดึงค่าเดิมของรายการนี้มาตั้งเป็นค่าเริ่มต้นในฟอร์ม เพื่อให้แก้ไขผลการตรวจได้สะดวก
+                cur_cond = str(mob_row['สภาพครุภัณฑ์']).strip()
+                default_cond_idx = condition_options.index(cur_cond) if cur_cond in condition_options else 0
+                
+                cur_status = str(mob_row['สถานะการตรวจ']).strip()
+                default_status_idx = status_options.index(cur_status) if cur_status in status_options else 0
+                
+                cur_note = str(mob_row['หมายเหตุ']).strip()
+                if cur_note in ['-', 'nan', 'None']:
+                    cur_note = ""
+                    
+                cur_insp = str(mob_row['ผู้ตรวจ']).strip()
+                if cur_insp in ['-', 'nan', 'None']:
+                    cur_insp = ""
+
+                # ใช้ st.form ที่มีชื่อผูกกับรหัสครุภัณฑ์ เพื่อให้ค่าเริ่มต้นอัปเดตตามรายการที่เลือก และกดปุ่มบันทึกได้ในคลิกเดียว
+                with st.form(key="audit_action_form", border=False):
                     mc1, mc2, mc3, mc4 = st.columns(4)
                     with mc1:
-                        mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, key="m_cond")
+                        mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=default_cond_idx)
                     with mc2:
-                        mob_status = st.selectbox("2. สถานะการตรวจ", status_options, key="m_status")
+                        mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=default_status_idx)
                     with mc3:
-                        mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", key="m_note")
+                        mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", value=cur_note)
                     with mc4:
-                        mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", key="m_insp")
+                        mob_inspector = st.text_input("3. ผู้ตรวจ (ชื่อผู้ตรวจสอบ/กรรมการ)", value=cur_insp)
                     
                     m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
                     with m_btn_col:
-                        mob_submit = st.button(label="💾 บันทึกผลการตรวจทันที", type="primary", use_container_width=True, key="btn_save_mobile")
+                        mob_submit = st.form_submit_button(
+                            label="💾 บันทึกผลการตรวจทันที",
+                            type="primary",
+                            use_container_width=True
+                        )
                     with m_save_status_col:
                         render_save_status_badge(
                             mob_row['สถานะการตรวจ'],
@@ -695,27 +697,20 @@ else:
                         thai_time = datetime.utcnow() + timedelta(hours=7)
                         current_time = thai_time.strftime("%d/%m/%Y %H:%M:%S")
                         
-                        mask = df[target_column].astype(str) == str(mob_target)
                         if mob_status == "ยังไม่ตรวจ":
                             m_condition = '-'
                             m_status_val = 'ยังไม่ตรวจ'
-                            m_note_val = '-'
+                            m_note_val = mob_note.strip() if mob_note.strip() else '-'
                             m_inspector_val = '-'
                             m_time_val = '-'
                         else:
                             m_condition = mob_condition
                             m_status_val = mob_status
                             m_note_val = mob_note.strip() if mob_note.strip() else '-'
-                            m_inspector_val = mob_inspector if mob_inspector.strip() else '-'
+                            m_inspector_val = mob_inspector.strip() if mob_inspector.strip() else '-'
                             m_time_val = current_time
                         
-                        df.loc[mask, 'สภาพครุภัณฑ์'] = m_condition
-                        df.loc[mask, 'สถานะการตรวจ'] = m_status_val
-                        df.loc[mask, 'หมายเหตุ'] = m_note_val
-                        df.loc[mask, 'ผู้ตรวจ'] = m_inspector_val
-                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = m_time_val
-                        
-                        save_progress_to_supabase(
+                        ok = save_progress_to_supabase(
                             asset_code=mob_target,
                             condition=m_condition,
                             status=m_status_val,
@@ -723,15 +718,17 @@ else:
                             inspector=m_inspector_val,
                             timestamp=m_time_val
                         )
-                        get_shared_data.clear()
-                        st.session_state.open_scanner = False
-                        st.success(f"✅ บันทึกผลครุภัณฑ์หมายเลข {mob_target} ลง Supabase สำเร็จเรียบร้อย!")
-                        st.rerun()
-            else:
-                st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ ตรวจสอบความถูกต้องอีกครั้งครับ")
+                        if ok:
+                            get_shared_data.clear()
+                            st.session_state.open_scanner = False
+                            st.session_state.flash_success_msg = f"✅ บันทึกผลการตรวจครุภัณฑ์หมายเลข {mob_target} ลง Supabase Cloud สำเร็จเรียบร้อย!"
+                            st.rerun()
         else:
-            st.info("👈 พิมพ์ค้นหาหมายเลขครุภัณฑ์ หรือกดปุ่ม **'📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ'** ด้านบนเพื่อเริ่มตรวจสอบได้เลยครับ")
+            st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์หรือคำค้นหานี้ในระบบ กรุณาตรวจสอบความถูกต้องอีกครั้งครับ")
 
+    # =========================================================================
+    # TAB 3: สร้าง QR Code
+    # =========================================================================
     with main_tab3:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
@@ -755,10 +752,10 @@ else:
             
             try:
                 font = ImageFont.truetype("arial.ttf", 20)
-            except:
+            except Exception:
                 try:
                     font = ImageFont.truetype("DejaVuSans.ttf", 20)
-                except:
+                except Exception:
                     font = ImageFont.load_default()
                 
             bbox = draw.textbbox((0, 0), text_to_print, font=font)
@@ -781,6 +778,9 @@ else:
                 mime="image/png"
             )
 
+    # =========================================================================
+    # TAB 4: ส่งออกรายงาน Excel
+    # =========================================================================
     with main_tab4:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
