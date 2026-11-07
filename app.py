@@ -319,7 +319,7 @@ def render_scanner_with_auto_extract():
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 380px; margin: 0 auto;"></div>
         <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
-            กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
+            กำลังเปิดกล้องส่อง QR Code...
         </div>
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -336,14 +336,23 @@ def render_scanner_with_auto_extract():
                     code = code.split("?scan=").pop().trim();
                 }
                 
-                document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
-                
+                // ส่งรหัสเข้าช่องกรอก และจำลองการกดปุ่มค้นหาอัตโนมัติทันที
                 const streamlitInput = window.parent.document.querySelector('input[aria-label="กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"]');
                 if (streamlitInput) {
                     streamlitInput.value = code;
                     streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
                     streamlitInput.dispatchEvent(new Event('change', { bubbles: true }));
                 }
+                
+                setTimeout(() => {
+                    const buttons = window.parent.document.querySelectorAll('button');
+                    for (let btn of buttons) {
+                        if (btn.innerText.includes("🔍 ค้นหา")) {
+                            btn.click();
+                            break;
+                        }
+                    }
+                }, 200);
                 
                 html5QrCode.stop().catch(err => {});
             },
@@ -354,7 +363,7 @@ def render_scanner_with_auto_extract():
         });
     </script>
     """
-    return components.html(scanner_html, height=350)
+    return components.html(scanner_html, height=330)
 
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
@@ -613,7 +622,7 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search & Pop-up แจ้งเตือน)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search & Pop-up แจ้งเตือนสถานะ)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
@@ -636,21 +645,21 @@ else:
                 if st.session_state.open_scanner:
                     render_scanner_with_auto_extract()
 
-                # 1. เปลี่ยนชื่อช่องเป็น "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"
+                # ช่องกรอกหมายเลขครุภัณฑ์ เพื่อค้นหา
                 scanned_code_input = st.text_input(
                     "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
                     key="scanned_asset_box",
                     placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
                 )
                 
-                # 2. ปุ่มค้นหาอยู่ใต้ช่องกรอกหมายเลข
+                # ปุ่มค้นหามาตรฐาน
                 col_btn_mid, col_space_mid = st.columns([1.5, 2.5])
                 with col_btn_mid:
                     search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
 
         active_search_val = scanned_code_input.strip() if scanned_code_input else ""
 
-        # ตรวจสอบว่ากดปุ่มค้นหา หรือถูกเรียกอัตโนมัติจากการสแกน QR Code
+        # ตรวจสอบการค้นหาอัตโนมัติจากการสแกนหรือกดปุ่ม
         is_auto_scanned = st.session_state.get("auto_scanned_trigger", False)
         if is_auto_scanned:
             st.session_state.auto_scanned_trigger = False
@@ -659,7 +668,7 @@ else:
         if search_triggered_mid and active_search_val:
             st.session_state.active_search_query = active_search_val
             
-            # เช็คว่าพบข้อมูลในฐานข้อมูลหรือไม่เพื่อแสดง Pop-up ตามเงื่อนไข
+            # ตรวจสอบว่าพบข้อมูลหรือไม่เพื่อแสดง Pop-up แจ้งเตือน
             check_kw = active_search_val
             check_match = valid_df[
                 valid_df[target_column].astype(str).str.strip().str.contains(check_kw, case=False, na=False)
