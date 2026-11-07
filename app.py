@@ -104,38 +104,54 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 🎨 ตกแต่งสีสันและความโดดเด่นให้กับ Tabs (แท็บเมนู) ทั้งหมด */
+    /* 🎨 ดีไซน์ปรับสีพื้นหลังและกรอบของ Tabs แต่ละแท็บให้ชัดเจนสวยงาม */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #f1f5f9;
-        padding: 10px;
+        gap: 10px;
+        background-color: #e2e8f0;
+        padding: 12px;
         border-radius: 12px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 45px;
-        white-space: pre-wrap;
-        background-color: #ffffff;
+        height: 48px;
         border-radius: 8px;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 14px;
-        color: #334155;
-        border: 1px solid #cbd5e1;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        padding: 0 16px;
+        padding: 0 18px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         transition: all 0.2s ease-in-out;
     }
-    /* สีเฉพาะของแต่ละแท็บเมื่อไม่ได้กดเลือก */
-    .stTabs [data-baseweb="tab"]:nth-child(1) { background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
-    .stTabs [data-baseweb="tab"]:nth-child(2) { background-color: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-    .stTabs [data-baseweb="tab"]:nth-child(3) { background-color: #fffbeb; color: #92400e; border-color: #fde68a; }
-    .stTabs [data-baseweb="tab"]:nth-child(4) { background-color: #faf5ff; color: #6b21a8; border-color: #e9d5ff; }
+    
+    /* 1. แท็บค้นหา (โทนสีฟ้าอ่อน) */
+    .stTabs [data-baseweb="tab"]:nth-of-type(1) {
+        background-color: #dbeafe !important;
+        border: 2px solid #93c5fd !important;
+        color: #1e40af !important;
+    }
+    /* 2. แท็บตรวจครุภัณฑ์ (โทนสีเขียวอ่อน) */
+    .stTabs [data-baseweb="tab"]:nth-of-type(2) {
+        background-color: #dcfce7 !important;
+        border: 2px solid #86efac !important;
+        color: #166534 !important;
+    }
+    /* 3. แท็บสร้าง QR Code (โทนสีเหลือง/ส้มอ่อน) */
+    .stTabs [data-baseweb="tab"]:nth-of-type(3) {
+        background-color: #fef3c7 !important;
+        border: 2px solid #fde047 !important;
+        color: #92400e !important;
+    }
+    /* 4. แท็บส่งออกรายงาน (โทนสีม่วงอ่อน) */
+    .stTabs [data-baseweb="tab"]:nth-of-type(4) {
+        background-color: #f3e8ff !important;
+        border: 2px solid #d8b4fe !important;
+        color: #6b21a8 !important;
+    }
 
-    /* สีและความเด่นชัดเมื่อแท็บนั้นถูกเลือกใช้งาน (Active Tab) */
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #1e293b, #0f172a) !important;
+    /* 🌟 สไตล์เมื่อแท็บนั้นถูกคลิกเลือก (Active Tab) จะเด่นชัดขึ้นมา */
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: linear-gradient(135deg, #0f172a, #1e293b) !important;
         color: #ffffff !important;
-        border-color: #0f172a !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        border: 2px solid #0f172a !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
         font-size: 15px !important;
     }
     </style>
@@ -448,7 +464,7 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # เปลี่ยนชื่อ Tab 1 เป็น "🔍 ค้นหา/โหมดแก้ไขรายละเอียด" พร้อมดีไซน์สีสันสวยงามแยกชัดเจน
+    # 4 แท็บเมนู พร้อมดีไซน์สีสันสวยงามแยกชัดเจนตามคำขอ
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
         "🔍 ค้นหา/โหมดแก้ไขรายละเอียด", 
         "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ",
@@ -666,7 +682,7 @@ else:
                         render_status_badge(
                             target_row_data['สถานะการตรวจ'],
                             target_row_data['สภาพครุภัณฑ์'],
-                            target_row_data['ผู้ตรวจ']
+                            target_row['ผู้ตรวจ'] if 'ผู้ตรวจ' in target_row else target_row_data['ผู้ตรวจ']
                         )
                     with col_info_details:
                         st.markdown(f"**ชื่อรายการ:** {target_row_data.get('รายการ', '-')}")
