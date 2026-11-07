@@ -103,6 +103,41 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
+
+    /* 🎨 ตกแต่งสีสันและความโดดเด่นให้กับ Tabs (แท็บเมนู) ทั้งหมด */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #f1f5f9;
+        padding: 10px;
+        border-radius: 12px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 45px;
+        white-space: pre-wrap;
+        background-color: #ffffff;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        padding: 0 16px;
+        transition: all 0.2s ease-in-out;
+    }
+    /* สีเฉพาะของแต่ละแท็บเมื่อไม่ได้กดเลือก */
+    .stTabs [data-baseweb="tab"]:nth-child(1) { background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+    .stTabs [data-baseweb="tab"]:nth-child(2) { background-color: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .stTabs [data-baseweb="tab"]:nth-child(3) { background-color: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .stTabs [data-baseweb="tab"]:nth-child(4) { background-color: #faf5ff; color: #6b21a8; border-color: #e9d5ff; }
+
+    /* สีและความเด่นชัดเมื่อแท็บนั้นถูกเลือกใช้งาน (Active Tab) */
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #1e293b, #0f172a) !important;
+        color: #ffffff !important;
+        border-color: #0f172a !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        font-size: 15px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -413,8 +448,9 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
+    # เปลี่ยนชื่อ Tab 1 เป็น "🔍 ค้นหา/โหมดแก้ไขรายละเอียด" พร้อมดีไซน์สีสันสวยงามแยกชัดเจน
     main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
-        "🔍 ค้นหา", 
+        "🔍 ค้นหา/โหมดแก้ไขรายละเอียด", 
         "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ",
         "🏷️ สร้าง QR Code", 
         "📥 ส่งออกรายงาน Excel"
@@ -426,7 +462,7 @@ else:
     ]
 
     # =========================================================================
-    # TAB 1: ค้นหา และ ส่งออกตารางที่ค้นหา
+    # TAB 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
     with main_tab1:
         st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
@@ -570,7 +606,7 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # TAB 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (เชื่อมโยงรหัสจากช่องค้นหาโดยตรง)
+    # TAB 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
     with main_tab2:
         st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
@@ -606,12 +642,10 @@ else:
 
         if mobile_search and mobile_search.strip():
             kw = mobile_search.strip()
-            # ค้นหาเฉพาะรายการที่รหัสครุภัณฑ์ตรงกันหรือใกล้เคียงกับที่พิมพ์/สแกน
             matched_mob = valid_df[
                 valid_df[target_column].astype(str).str.strip().str.contains(kw, case=False, na=False)
             ]
             if matched_mob.empty:
-                # ถ้าหาแบบตรงรหัสไม่เจอ ลองค้นหาจากทุกคอลัมน์
                 matched_mob = valid_df[
                     valid_df.astype(str).apply(lambda x: x.str.contains(kw, case=False, na=False)).any(axis=1)
                 ]
@@ -620,7 +654,6 @@ else:
                 st.success(f"🎯 พบข้อมูลครุภัณฑ์ที่ตรงกับรหัส/คำค้นหา: {len(matched_mob)} รายการ")
                 st.dataframe(matched_mob, use_container_width=True)
                 
-                # ล็อกเป้าหมายเป็นรายการแรกที่ค้นหาเจอทันที (ไม่ต้องมี Dropdown ให้เลือกซ้ำซ้อน)
                 target_row_data = matched_mob.iloc[0]
                 mob_target = str(target_row_data[target_column]).strip()
                 
@@ -639,7 +672,6 @@ else:
                         st.markdown(f"**ชื่อรายการ:** {target_row_data.get('รายการ', '-')}")
                         st.markdown(f"**สถานที่/อยู่ที่:** {target_row_data.get('อยู่ที่', '-')}")
 
-                    # ดึงค่าเดิมมาแสดงในฟอร์มเพื่อให้แก้ไขได้สะดวก
                     cur_cond = str(target_row_data['สภาพครุภัณฑ์']).strip()
                     default_cond_idx = condition_options.index(cur_cond) if cur_cond in condition_options else 0
                     
