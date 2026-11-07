@@ -103,29 +103,6 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
-
-    /* 🟢 ปรับแต่ง st.radio ให้วงกลมสถานะและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
-    div.row-widget.stRadio > div[role="radiogroup"] {
-        background-color: #f8fafc;
-        padding: 10px 15px;
-        border-radius: 12px;
-        border: 1px solid #cbd5e1;
-        display: flex;
-        justify-content: space-around;
-    }
-    /* เปลี่ยนสีวงกลมสถานะ (Radio Indicator) เป็นสีเขียวเมื่อถูกเลือก */
-    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
-        background-color: #22c55e !important;
-        border-color: #22c55e !important;
-    }
-    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
-        background-color: #ffffff !important;
-    }
-    /* เปลี่ยนสีตัวหนังสือของแท็บที่กำลังเลือกให้เป็นสีเขียวเข้มและหนาขึ้น */
-    div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
-        color: #15803d !important;
-        font-weight: 800 !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -435,20 +412,73 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ใช้ st.radio แนวนอน (นำจุดเขียวออก เอาสีวงกลมเป็นสีเขียว และตัวหนังสือเป็นสีเขียวเข้มเมื่อเลือก) ---
+    # --- 🎛️ ระบบ Custom Tab เมนูปุ่มกด ควบคุมสีตัวอักษรและพื้นหลังด้วย HTML/CSS ล้วน ---
+    if "active_menu" not in st.session_state:
+        st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
     m4_name = "📥 ส่งออกรายงาน Excel"
 
-    menu_options = [m1_name, m2_name, m3_name, m4_name]
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
 
-    selected_menu = st.radio(
-        "เลือกเมนูการทำงาน:",
-        options=menu_options,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    with col_n1:
+        if st.button(m1_name, use_container_width=True, key="btn_m1"):
+            st.session_state.active_menu = m1_name
+            st.rerun()
+    with col_n2:
+        if st.button(m2_name, use_container_width=True, key="btn_m2"):
+            st.session_state.active_menu = m2_name
+            st.rerun()
+    with col_n3:
+        if st.button(m3_name, use_container_width=True, key="btn_m3"):
+            st.session_state.active_menu = m3_name
+            st.rerun()
+    with col_n4:
+        if st.button(m4_name, use_container_width=True, key="btn_m4"):
+            st.session_state.active_menu = m4_name
+            st.rerun()
+
+    active_m = st.session_state.active_menu
+
+    # ใช้ CSS เจาะจงเปลี่ยนสีตัวหนังสือ พื้นหลัง และเส้นขอบของปุ่มที่เลือกให้เป็นสีเขียวเด่นชัด
+    st.markdown(f"""
+        <style>
+        /* ปุ่มที่ 1 */
+        div[data-testid="column"]:nth-of-type(1) button {{
+            background-color: {"#dcfce7 !important" if active_m == m1_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m1_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m1_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m1_name else "600"};
+            border-radius: 8px;
+        }}
+        /* ปุ่มที่ 2 */
+        div[data-testid="column"]:nth-of-type(2) button {{
+            background-color: {"#dcfce7 !important" if active_m == m2_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m2_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m2_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m2_name else "600"};
+            border-radius: 8px;
+        }}
+        /* ปุ่มที่ 3 */
+        div[data-testid="column"]:nth-of-type(3) button {{
+            background-color: {"#dcfce7 !important" if active_m == m3_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m3_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m3_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m3_name else "600"};
+            border-radius: 8px;
+        }}
+        /* ปุ่มที่ 4 */
+        div[data-testid="column"]:nth-of-type(4) button {{
+            background-color: {"#dcfce7 !important" if active_m == m4_name else "#f8fafc"};
+            color: {"#15803d !important" if active_m == m4_name else "#334155"};
+            border: 2px solid {"#22c55e !important" if active_m == m4_name else "#cbd5e1"};
+            font-weight: {"800" if active_m == m4_name else "600"};
+            border-radius: 8px;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
 
     st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
     
@@ -460,7 +490,7 @@ else:
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
-    if selected_menu == m1_name:
+    if active_m == m1_name:
         st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -604,7 +634,7 @@ else:
     # =========================================================================
     # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    elif selected_menu == m2_name:
+    elif active_m == m2_name:
         st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
@@ -744,7 +774,7 @@ else:
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    elif selected_menu == m3_name:
+    elif active_m == m3_name:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
@@ -796,7 +826,7 @@ else:
     # =========================================================================
     # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    elif selected_menu == m4_name:
+    elif active_m == m4_name:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
