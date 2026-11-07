@@ -103,9 +103,9 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
-    
-    /* 🟢 ตกแต่ง st.radio แบบแนวนอนให้สวยงามและเน้นแถบเลือกสีเขียว */
-    div.row-widget.stRadio > div {
+
+    /* 🟢 ปรับแต่ง st.radio ให้วงกลมสถานะและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
+    div.row-widget.stRadio > div[role="radiogroup"] {
         background-color: #f8fafc;
         padding: 10px 15px;
         border-radius: 12px;
@@ -113,19 +113,18 @@ st.markdown("""
         display: flex;
         justify-content: space-around;
     }
-    div.row-widget.stRadio > div[role="radiogroup"] > label {
-        background-color: #ffffff;
-        padding: 6px 14px;
-        border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        font-weight: 600;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        transition: all 0.2s ease;
+    /* เปลี่ยนสีวงกลมสถานะ (Radio Indicator) เป็นสีเขียวเมื่อถูกเลือก */
+    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
+        background-color: #22c55e !important;
+        border-color: #22c55e !important;
     }
-    div.row-widget.stRadio > div[role="radiogroup"] > label:has(input:checked) {
-        background-color: #dcfce7 !important;
-        border: 2px solid #22c55e !important;
+    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
+        background-color: #ffffff !important;
+    }
+    /* เปลี่ยนสีตัวหนังสือของแท็บที่กำลังเลือกให้เป็นสีเขียวเข้มและหนาขึ้น */
+    div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
         color: #15803d !important;
+        font-weight: 800 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -436,8 +435,8 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ใช้ st.radio แนวนอน (แก้ปัญหาเปลี่ยนสีพื้นหลังและตัวหนังสือเป็นสีเขียวเมื่อเลือกได้อย่างสมบูรณ์ 100%) ---
-    m1_name = "🟢 🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+    # --- 🎛️ ใช้ st.radio แนวนอน (นำจุดเขียวออก เอาสีวงกลมเป็นสีเขียว และตัวหนังสือเป็นสีเขียวเข้มเมื่อเลือก) ---
+    m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
     m4_name = "📥 ส่งออกรายงาน Excel"
