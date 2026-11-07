@@ -103,6 +103,30 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
+    
+    /* 🟢 ตกแต่ง st.radio แบบแนวนอนให้สวยงามและเน้นแถบเลือกสีเขียว */
+    div.row-widget.stRadio > div {
+        background-color: #f8fafc;
+        padding: 10px 15px;
+        border-radius: 12px;
+        border: 1px solid #cbd5e1;
+        display: flex;
+        justify-content: space-around;
+    }
+    div.row-widget.stRadio > div[role="radiogroup"] > label {
+        background-color: #ffffff;
+        padding: 6px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        transition: all 0.2s ease;
+    }
+    div.row-widget.stRadio > div[role="radiogroup"] > label:has(input:checked) {
+        background-color: #dcfce7 !important;
+        border: 2px solid #22c55e !important;
+        color: #15803d !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -157,7 +181,6 @@ def get_shared_data():
     for col in df.columns:
         df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
-    # ดึงข้อมูลจาก Supabase Cloud (รวมถึงรายการที่เคยแก้ไขและรายการที่เพิ่มใหม่บน Cloud)
     if supabase:
         try:
             response = supabase.table("core_assetauditrecord").select("*").execute()
@@ -413,64 +436,20 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ระบบเมนูปุ่มกด Navigation ควบคุมสีตัวอักษรและจุด 🟢 เฉพาะปุ่มที่ Active ---
-    if "active_menu" not in st.session_state:
-        st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
-
-    b1, b2, b3, b4 = st.columns(4)
-
-    m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+    # --- 🎛️ ใช้ st.radio แนวนอน (แก้ปัญหาเปลี่ยนสีพื้นหลังและตัวหนังสือเป็นสีเขียวเมื่อเลือกได้อย่างสมบูรณ์ 100%) ---
+    m1_name = "🟢 🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
     m4_name = "📥 ส่งออกรายงาน Excel"
 
-    with b1:
-        is_active_1 = st.session_state.active_menu == m1_name
-        label_1 = f"🟢 {m1_name}" if is_active_1 else m1_name
-        if st.button(label_1, use_container_width=True, key="nav_btn_1"):
-            st.session_state.active_menu = m1_name
-            st.rerun()
+    menu_options = [m1_name, m2_name, m3_name, m4_name]
 
-    with b2:
-        is_active_2 = st.session_state.active_menu == m2_name
-        label_2 = f"🟢 {m2_name}" if is_active_2 else m2_name
-        if st.button(label_2, use_container_width=True, key="nav_btn_2"):
-            st.session_state.active_menu = m2_name
-            st.rerun()
-
-    with b3:
-        is_active_3 = st.session_state.active_menu == m3_name
-        label_3 = f"🟢 {m3_name}" if is_active_3 else m3_name
-        if st.button(label_3, use_container_width=True, key="nav_btn_3"):
-            st.session_state.active_menu = m3_name
-            st.rerun()
-
-    with b4:
-        is_active_4 = st.session_state.active_menu == m4_name
-        label_4 = f"🟢 {m4_name}" if is_active_4 else m4_name
-        if st.button(label_4, use_container_width=True, key="nav_btn_4"):
-            st.session_state.active_menu = m4_name
-            st.rerun()
-
-    # ใช้ CSS เจาะจงบังคับสีตัวอักษรตามสถานะ Active อย่างเด็ดขาด
-    color_1 = "#15803d !important" if is_active_1 else "#1e293b"
-    color_2 = "#15803d !important" if is_active_2 else "#1e293b"
-    color_3 = "#15803d !important" if is_active_3 else "#1e293b"
-    color_4 = "#15803d !important" if is_active_4 else "#1e293b"
-
-    weight_1 = "800" if is_active_1 else "600"
-    weight_2 = "800" if is_active_2 else "600"
-    weight_3 = "800" if is_active_3 else "600"
-    weight_4 = "800" if is_active_4 else "600"
-
-    st.markdown(f"""
-        <style>
-        div[data-testid="column"]:nth-of-type(1) button p {{ color: {color_1}; font-weight: {weight_1}; }}
-        div[data-testid="column"]:nth-of-type(2) button p {{ color: {color_2}; font-weight: {weight_2}; }}
-        div[data-testid="column"]:nth-of-type(3) button p {{ color: {color_3}; font-weight: {weight_3}; }}
-        div[data-testid="column"]:nth-of-type(4) button p {{ color: {color_4}; font-weight: {weight_4}; }}
-        </style>
-    """, unsafe_allow_html=True)
+    selected_menu = st.radio(
+        "เลือกเมนูการทำงาน:",
+        options=menu_options,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
     st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
     
@@ -479,12 +458,10 @@ else:
         "ยังไม่ตรวจ"
     ]
 
-    active_menu = st.session_state.active_menu
-
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
-    if active_menu == m1_name:
+    if selected_menu == m1_name:
         st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -628,7 +605,7 @@ else:
     # =========================================================================
     # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    elif active_menu == m2_name:
+    elif selected_menu == m2_name:
         st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
@@ -768,7 +745,7 @@ else:
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    elif active_menu == m3_name:
+    elif selected_menu == m3_name:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
@@ -820,7 +797,7 @@ else:
     # =========================================================================
     # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    elif active_menu == m4_name:
+    elif selected_menu == m4_name:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
