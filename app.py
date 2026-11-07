@@ -612,7 +612,7 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (มีปุ่มค้นหาทั้งใต้ช่องสแกน และใต้ช่องเลขครุภัณฑ์)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (มีปุ่มค้นหาใต้กล้องสแกน และตัดปุ่มล่างสุดออก)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
@@ -635,29 +635,24 @@ else:
                 if st.session_state.open_scanner:
                     render_scanner_with_auto_extract()
 
+                # 🔽 เพิ่มปุ่มค้นหา (สีเขียวอ่อน/Primary) ไว้ใต้กล้องสแกนทันทีก่อนถึงช่องแสดงเลขครุภัณฑ์
+                col_btn_mid, col_space_mid = st.columns([1.5, 2.5])
+                with col_btn_mid:
+                    search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
+
+                st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
+
                 # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ที่สแกนได้
                 scanned_code_input = st.text_input(
                     "หมายเลขครุภัณฑ์ที่สแกนได้:",
                     key="scanned_asset_box",
                     placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
                 )
-                
-                # 🔽 เพิ่มปุ่มค้นหาไว้ใต้ช่องหมายเลขครุภัณฑ์ทันที
-                col_btn_top, col_space_top = st.columns([1.5, 2.5])
-                with col_btn_top:
-                    search_triggered_top = st.button("🔍 ค้นหา", key="btn_search_top", type="primary", use_container_width=True)
 
-                st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
-
-                # ปุ่มค้นหาสำรองด้านล่าง (ตามเดิม)
-                col_btn_bottom, col_space_bottom = st.columns([1.5, 2.5])
-                with col_btn_bottom:
-                    search_triggered_bot = st.button("🔍 ค้นหา", key="btn_search_bot", type="secondary", use_container_width=True)
-
-        # ตรวจสอบการกดปุ่มค้นหาจากทั้งสองจุด
+        # ตรวจสอบการกดปุ่มค้นหา
         active_search_val = scanned_code_input.strip() if scanned_code_input else ""
 
-        if (search_triggered_top or search_triggered_bot) and active_search_val:
+        if search_triggered_mid and active_search_val:
             st.session_state.active_search_query = active_search_val
 
         current_query = st.session_state.get("active_search_query", "")
