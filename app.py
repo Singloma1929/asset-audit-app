@@ -103,6 +103,27 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
+
+    /* 🟢 ตกแต่ง st.radio ให้วงกลมและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
+    div.row-widget.stRadio > div[role="radiogroup"] {
+        background-color: #f8fafc;
+        padding: 10px 15px;
+        border-radius: 12px;
+        border: 1px solid #cbd5e1;
+        display: flex;
+        justify-content: space-around;
+    }
+    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
+        background-color: #22c55e !important;
+        border-color: #22c55e !important;
+    }
+    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
+        background-color: #ffffff !important;
+    }
+    div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
+        color: #15803d !important;
+        font-weight: 800 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -124,11 +145,11 @@ header_row = 4
 
 @st.cache_resource
 def get_shared_data(fiscal_year_str):
-    # กำหนดชื่อไฟล์ Excel ตามปีงบประมาณที่เลือก
+    # กำหนดชื่อไฟล์รองรับทั้ง .xlsx และ .xls ตามปีที่เลือกอย่างครอบคลุม
     if "2568" in fiscal_year_str:
-        file_candidates = ["default_asset_2568.xlsx", "default_asset_2568.xls", "default_asset.xlsx"]
+        file_candidates = ["default_asset_2568.xlsx", "default_asset_2568.xls"]
     elif "2569" in fiscal_year_str:
-        file_candidates = ["default_asset_2569.xlsx", "default_asset_2569.xls", "default_asset.xlsx"]
+        file_candidates = ["default_asset_2569.xlsx", "default_asset_2569.xls"]
     else:
         file_candidates = ["default_asset.xlsx", "default_asset.xls", "default_asset_2570.xlsx"]
 
@@ -177,21 +198,16 @@ def get_shared_data(fiscal_year_str):
     for col in df.columns:
         df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
-    # ดึงข้อมูลจาก Supabase Cloud โดยกรองตามปีงบประมาณ (ใช้ asset_code เป็นหลัก และแยกตามปีถ้าต้องการ หรือใช้ตารางร่วมกัน)
     if supabase:
         try:
-            # ดึงข้อมูลทั้งหมดจากตาราง
             response = supabase.table("core_assetauditrecord").select("*").execute()
             saved_data = response.data
             
             if saved_data:
                 new_cloud_rows = []
                 for row in saved_data:
-                    # ถ้ามีการเก็บแยกปีใน note หรือฟิลด์ ให้คัดกรองตามปีงบประมาณที่เลือก
-                    raw_note = str(row['note']) if pd.notna(row['note']) else '-'
-                    
-                    # ตรวจสอบปีจากข้อมูลย้อนหลัง (ถ้ามีระบุปีในฐานข้อมูล) หรือดึงมาแสดงรวม
                     code = str(row['asset_code']).strip()
+                    raw_note = str(row['note']) if pd.notna(row['note']) else '-'
                     
                     actual_note = raw_note
                     extra_info = {}
@@ -359,7 +375,6 @@ scanned_param = st.query_params.get("scan", "")
 if scanned_param and "mob_input_box" not in st.session_state:
     st.session_state.mob_input_box = str(scanned_param).strip()
 
-# โหลดข้อมูลตามปีงบประมาณที่เลือกจาก Dropdown ด้านบน
 df, target_column = get_shared_data(selected_fiscal_year)
 
 if df is None:
@@ -438,68 +453,20 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ เมนูนำทาง (Tabs) ควบคุมสีตัวอักษรและสถานะ Active ---
-    if "active_menu" not in st.session_state:
-        st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
-
+    # --- 🎛️ ใช้ st.radio แนวนอน (เลือกแท็บไหน วงกลม+ตัวหนังสือเปลี่ยนเป็นสีเขียวทันที) ---
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
     m4_name = "📥 ส่งออกรายงาน Excel"
 
-    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    menu_options = [m1_name, m2_name, m3_name, m4_name]
 
-    with col_n1:
-        if st.button(m1_name, use_container_width=True, key="btn_m1"):
-            st.session_state.active_menu = m1_name
-            st.rerun()
-    with col_n2:
-        if st.button(m2_name, use_container_width=True, key="btn_m2"):
-            st.session_state.active_menu = m2_name
-            st.rerun()
-    with col_n3:
-        if st.button(m3_name, use_container_width=True, key="btn_m3"):
-            st.session_state.active_menu = m3_name
-            st.rerun()
-    with col_n4:
-        if st.button(m4_name, use_container_width=True, key="btn_m4"):
-            st.session_state.active_menu = m4_name
-            st.rerun()
-
-    active_m = st.session_state.active_menu
-
-    st.markdown(f"""
-        <style>
-        div[data-testid="column"]:nth-of-type(1) button {{
-            background-color: {"#dcfce7 !important" if active_m == m1_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m1_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m1_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m1_name else "600"};
-            border-radius: 8px;
-        }}
-        div[data-testid="column"]:nth-of-type(2) button {{
-            background-color: {"#dcfce7 !important" if active_m == m2_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m2_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m2_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m2_name else "600"};
-            border-radius: 8px;
-        }}
-        div[data-testid="column"]:nth-of-type(3) button {{
-            background-color: {"#dcfce7 !important" if active_m == m3_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m3_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m3_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m3_name else "600"};
-            border-radius: 8px;
-        }}
-        div[data-testid="column"]:nth-of-type(4) button {{
-            background-color: {"#dcfce7 !important" if active_m == m4_name else "#f8fafc"};
-            color: {"#15803d !important" if active_m == m4_name else "#334155"};
-            border: 2px solid {"#22c55e !important" if active_m == m4_name else "#cbd5e1"};
-            font-weight: {"800" if active_m == m4_name else "600"};
-            border-radius: 8px;
-        }}
-        </style>
-    """, unsafe_allow_html=True)
+    selected_menu = st.radio(
+        "เลือกเมนูการทำงาน:",
+        options=menu_options,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
     st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
     
@@ -511,7 +478,7 @@ else:
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
-    if active_m == m1_name:
+    if selected_menu == m1_name:
         st.subheader(f"🔍 ค้นหาข้อมูลครุภัณฑ์ ({selected_fiscal_year})")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -655,7 +622,7 @@ else:
     # =========================================================================
     # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    elif active_m == m2_name:
+    elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
@@ -787,7 +754,7 @@ else:
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    elif active_m == m3_name:
+    elif selected_menu == m3_name:
         st.subheader(f"🏷️ ระบบสร้าง QR Code ({selected_fiscal_year})")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
@@ -839,7 +806,7 @@ else:
     # =========================================================================
     # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    elif active_m == m4_name:
+    elif selected_menu == m4_name:
         st.subheader(f"📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบ ({selected_fiscal_year})")
         st.write("ข้อมูลการตรวจสอบทั้งหมดสามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
