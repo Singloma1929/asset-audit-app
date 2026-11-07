@@ -413,55 +413,71 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ สร้างระบบเมนูปุ่มกด (Navigation Buttons) แทน Tabs ปกติ เพื่อคุมสีและตัวอักษรสีเขียวได้อย่างสมบูรณ์ ---
+    # --- 🎛️ ระบบเมนูปุ่มกด Navigation (แยกสีอิสระ ปุ่มที่เลือกจะเปลี่ยนเป็นสีเขียวอ่อน/ตัวหนังสือเขียว พร้อมจุดเขียว 🟢) ---
     if "active_menu" not in st.session_state:
         st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
 
-    # จัดวางปุ่มเมนูทั้ง 4 ใน 4 คอลัมน์
     b1, b2, b3, b4 = st.columns(4)
 
+    m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+    m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
+    m3_name = "🏷️ สร้าง QR Code"
+    m4_name = "📥 ส่งออกรายงาน Excel"
+
     with b1:
-        is_active_1 = st.session_state.active_menu == "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
-        btn_label_1 = "🟢 🔍 ค้นหา/โหมดแก้ไขรายละเอียด" if is_active_1 else "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
-        if st.button(btn_label_1, use_container_width=True):
-            st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+        is_active_1 = st.session_state.active_menu == m1_name
+        label_1 = f"🟢 {m1_name}" if is_active_1 else m1_name
+        if st.button(label_1, use_container_width=True, key="nav_btn_1"):
+            st.session_state.active_menu = m1_name
             st.rerun()
 
     with b2:
-        is_active_2 = st.session_state.active_menu == "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
-        btn_label_2 = "🟢 📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ" if is_active_2 else "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
-        if st.button(btn_label_2, use_container_width=True):
-            st.session_state.active_menu = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
+        is_active_2 = st.session_state.active_menu == m2_name
+        label_2 = f"🟢 {m2_name}" if is_active_2 else m2_name
+        if st.button(label_2, use_container_width=True, key="nav_btn_2"):
+            st.session_state.active_menu = m2_name
             st.rerun()
 
     with b3:
-        is_active_3 = st.session_state.active_menu == "🏷️ สร้าง QR Code"
-        btn_label_3 = "🟢 🏷️ สร้าง QR Code" if is_active_3 else "🏷️ สร้าง QR Code"
-        if st.button(btn_label_3, use_container_width=True):
-            st.session_state.active_menu = "🏷️ สร้าง QR Code"
+        is_active_3 = st.session_state.active_menu == m3_name
+        label_3 = f"🟢 {m3_name}" if is_active_3 else m3_name
+        if st.button(label_3, use_container_width=True, key="nav_btn_3"):
+            st.session_state.active_menu = m3_name
             st.rerun()
 
     with b4:
-        is_active_4 = st.session_state.active_menu == "📥 ส่งออกรายงาน Excel"
-        btn_label_4 = "🟢 📥 ส่งออกรายงาน Excel" if is_active_4 else "📥 ส่งออกรายงาน Excel"
-        if st.button(btn_label_4, use_container_width=True):
-            st.session_state.active_menu = "📥 ส่งออกรายงาน Excel"
+        is_active_4 = st.session_state.active_menu == m4_name
+        label_4 = f"🟢 {m4_name}" if is_active_4 else m4_name
+        if st.button(label_4, use_container_width=True, key="nav_btn_4"):
+            st.session_state.active_menu = m4_name
             st.rerun()
 
-    # ตกแต่งสีพื้นหลังของปุ่มแต่ละปุ่มให้แตกต่างกันชัดเจน และหากเลือกอยู่ตัวอักษรจะเป็นสีเขียวเด่นชัด
+    # กำหนดสีพื้นหลังและสีตัวอักษร: ปุ่มไหนถูกเลือกจะเป็นสีเขียวอ่อน/ตัวหนังสือสีเขียวเข้ม ปุ่มไหนไม่ได้เลือกจะใช้สีประจำตัว
     active_menu = st.session_state.active_menu
-    c1_color = "#15803d" if active_menu == "🔍 ค้นหา/โหมดแก้ไขรายละเอียด" else "#1e40af"
-    c2_color = "#15803d" if active_menu == "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ" else "#166534"
-    c3_color = "#15803d" if active_menu == "🏷️ สร้าง QR Code" else "#92400e"
-    c4_color = "#15803d" if active_menu == "📥 ส่งออกรายงาน Excel" else "#6b21a8"
+    
+    bg_1 = "#dcfce7" if is_active_1 else "#dbeafe"
+    col_1 = "#15803d" if is_active_1 else "#1e40af"
+    bdr_1 = "#22c55e" if is_active_1 else "#93c5fd"
+
+    bg_2 = "#dcfce7" if is_active_2 else "#f0fdf4"
+    col_2 = "#15803d" if is_active_2 else "#166534"
+    bdr_2 = "#22c55e" if is_active_2 else "#86efac"
+
+    bg_3 = "#dcfce7" if is_active_3 else "#fef3c7"
+    col_3 = "#15803d" if is_active_3 else "#92400e"
+    bdr_3 = "#22c55e" if is_active_3 else "#fde047"
+
+    bg_4 = "#dcfce7" if is_active_4 else "#f3e8ff"
+    col_4 = "#15803d" if is_active_4 else "#6b21a8"
+    bdr_4 = "#22c55e" if is_active_4 else "#d8b4fe"
 
     st.markdown(f"""
         <style>
-        /* จัดแต่งปุ่มเมนูทั้ง 4 ให้มีสีพื้นหลังต่างกันอย่างสวยงาม */
-        div.stButton:nth-of-type(1) > button {{ background-color: #dbeafe !important; border: 2px solid #93c5fd !important; color: {c1_color} !important; font-weight: 700; border-radius: 8px; }}
-        div.stButton:nth-of-type(2) > button {{ background-color: #dcfce7 !important; border: 2px solid #86efac !important; color: {c2_color} !important; font-weight: 700; border-radius: 8px; }}
-        div.stButton:nth-of-type(3) > button {{ background-color: #fef3c7 !important; border: 2px solid #fde047 !important; color: {c3_color} !important; font-weight: 700; border-radius: 8px; }}
-        div.stButton:nth-of-type(4) > button {{ background-color: #f3e8ff !important; border: 2px solid #d8b4fe !important; color: {c4_color} !important; font-weight: 700; border-radius: 8px; }}
+        /* จัดแต่งสไตล์ปุ่ม Navigation แต่ละปุ่มให้ออิสระจากกัน */
+        div[data-testid="column"]:nth-of-type(1) button {{ background-color: {bg_1} !important; border: 2px solid {bdr_1} !important; color: {col_1} !important; font-weight: 700; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(2) button {{ background-color: {bg_2} !important; border: 2px solid {bdr_2} !important; color: {col_2} !important; font-weight: 700; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(3) button {{ background-color: {bg_3} !important; border: 2px solid {bdr_3} !important; color: {col_3} !important; font-weight: 700; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(4) button {{ background-color: {bg_4} !important; border: 2px solid {bdr_4} !important; color: {col_4} !important; font-weight: 700; border-radius: 8px; }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -475,7 +491,7 @@ else:
     # =========================================================================
     # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
-    if active_menu == "🔍 ค้นหา/โหมดแก้ไขรายละเอียด":
+    if active_menu == m1_name:
         st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -619,7 +635,7 @@ else:
     # =========================================================================
     # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    elif active_menu == "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ":
+    elif active_menu == m2_name:
         st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
@@ -759,7 +775,7 @@ else:
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    elif active_menu == "🏷️ สร้าง QR Code":
+    elif active_menu == m3_name:
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
@@ -811,7 +827,7 @@ else:
     # =========================================================================
     # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    elif active_menu == "📥 ส่งออกรายงาน Excel":
+    elif active_menu == m4_name:
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
