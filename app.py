@@ -338,7 +338,7 @@ def render_scanner_with_auto_extract():
                 
                 document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
                 
-                const streamlitInput = window.parent.document.querySelector('input[aria-label="หมายเลขครุภัณฑ์ที่สแกนได้:"]');
+                const streamlitInput = window.parent.document.querySelector('input[aria-label="กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"]');
                 if (streamlitInput) {
                     streamlitInput.value = code;
                     streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -364,6 +364,7 @@ if "flash_success_msg" in st.session_state:
 scanned_param = st.query_params.get("scan", "")
 if scanned_param and "scanned_asset_box" not in st.session_state:
     st.session_state.scanned_asset_box = str(scanned_param).strip()
+    st.session_state.auto_scanned_trigger = True
 
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
 
@@ -612,11 +613,11 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (มีปุ่มค้นหาใต้กล้องสแกน และตัดปุ่มล่างสุดออก)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search & Pop-up แจ้งเตือน)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
-        st.write("ใช้สำหรับสแกน QR Code เพื่อดึงหมายเลขครุภัณฑ์และกดปุ่มค้นหาเพื่อบันทึกผลการตรวจได้ทันที")
+        st.write("ใช้สำหรับสแกน QR Code หรือกรอกหมายเลขครุภัณฑ์เพื่อค้นหาและบันทึกผลการตรวจ")
         
         left_box, right_box = st.columns([6, 6])
         
@@ -635,25 +636,43 @@ else:
                 if st.session_state.open_scanner:
                     render_scanner_with_auto_extract()
 
-                # 🔽 เพิ่มปุ่มค้นหา (สีเขียวอ่อน/Primary) ไว้ใต้กล้องสแกนทันทีก่อนถึงช่องแสดงเลขครุภัณฑ์
+                # 1. เปลี่ยนชื่อช่องเป็น "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"
+                scanned_code_input = st.text_input(
+                    "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
+                    key="scanned_asset_box",
+                    placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
+                )
+                
+                # 2. ปุ่มค้นหาอยู่ใต้ช่องกรอกหมายเลข
                 col_btn_mid, col_space_mid = st.columns([1.5, 2.5])
                 with col_btn_mid:
                     search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
 
-                st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
-
-                # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ที่สแกนได้
-                scanned_code_input = st.text_input(
-                    "หมายเลขครุภัณฑ์ที่สแกนได้:",
-                    key="scanned_asset_box",
-                    placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
-                )
-
-        # ตรวจสอบการกดปุ่มค้นหา
         active_search_val = scanned_code_input.strip() if scanned_code_input else ""
+
+        # ตรวจสอบว่ากดปุ่มค้นหา หรือถูกเรียกอัตโนมัติจากการสแกน QR Code
+        is_auto_scanned = st.session_state.get("auto_scanned_trigger", False)
+        if is_auto_scanned:
+            st.session_state.auto_scanned_trigger = False
+            search_triggered_mid = True
 
         if search_triggered_mid and active_search_val:
             st.session_state.active_search_query = active_search_val
+            
+            # เช็คว่าพบข้อมูลในฐานข้อมูลหรือไม่เพื่อแสดง Pop-up ตามเงื่อนไข
+            check_kw = active_search_val
+            check_match = valid_df[
+                valid_df[target_column].astype(str).str.strip().str.contains(check_kw, case=False, na=False)
+            ]
+            if check_match.empty:
+                check_match = valid_df[
+                    valid_df.astype(str).apply(lambda x: x.str.contains(check_kw, case=False, na=False)).any(axis=1)
+                ]
+            
+            if not check_match.empty:
+                st.toast("✅ ค้นพบข้อมูล", icon="🎯")
+            else:
+                st.toast("⚠️ ไม่พบข้อมูล / QR Code ไม่ถูกต้อง", icon="❌")
 
         current_query = st.session_state.get("active_search_query", "")
 
