@@ -338,7 +338,6 @@ def render_scanner_with_auto_extract():
                 
                 document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
                 
-                // ส่งค่าหมายเลขครุภัณฑ์ไปเก็บไว้ที่ Streamlit LocalStorage / URL query หรือ Element ซ่อน
                 const streamlitInput = window.parent.document.querySelector('input[aria-label="หมายเลขครุภัณฑ์ที่สแกนได้:"]');
                 if (streamlitInput) {
                     streamlitInput.value = code;
@@ -613,13 +612,12 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (ย่อช่องสแกนซ้ายครึ่งจอ + ช่องแสดงเลขครุภัณฑ์แยกเฉพาะ + ปุ่มค้นหา)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (มีปุ่มค้นหาทั้งใต้ช่องสแกน และใต้ช่องเลขครุภัณฑ์)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code เพื่อดึงหมายเลขครุภัณฑ์และกดปุ่มค้นหาเพื่อบันทึกผลการตรวจได้ทันที")
         
-        # แบ่งหน้าจอฝั่งซ้ายครึ่งเดียว (6 ส่วน)
         left_box, right_box = st.columns([6, 6])
         
         with left_box:
@@ -637,22 +635,29 @@ else:
                 if st.session_state.open_scanner:
                     render_scanner_with_auto_extract()
 
-                # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ที่สแกนได้ (แยกต่างหาก)
+                # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ที่สแกนได้
                 scanned_code_input = st.text_input(
                     "หมายเลขครุภัณฑ์ที่สแกนได้:",
                     key="scanned_asset_box",
                     placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
                 )
                 
-                # ปุ่มค้นหาขนาดกะทัดรัด
-                col_btn_search, col_space_btn = st.columns([1.5, 2.5])
-                with col_btn_search:
-                    search_triggered = st.button("🔍 ค้นหา", type="primary", use_container_width=True)
+                # 🔽 เพิ่มปุ่มค้นหาไว้ใต้ช่องหมายเลขครุภัณฑ์ทันที
+                col_btn_top, col_space_top = st.columns([1.5, 2.5])
+                with col_btn_top:
+                    search_triggered_top = st.button("🔍 ค้นหา", key="btn_search_top", type="primary", use_container_width=True)
 
-        # เมื่อกดปุ่มค้นหา หรือมีค่าค้างไว้ ให้ดึงข้อมูลมาแสดงผลด้านล่าง
+                st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
+
+                # ปุ่มค้นหาสำรองด้านล่าง (ตามเดิม)
+                col_btn_bottom, col_space_bottom = st.columns([1.5, 2.5])
+                with col_btn_bottom:
+                    search_triggered_bot = st.button("🔍 ค้นหา", key="btn_search_bot", type="secondary", use_container_width=True)
+
+        # ตรวจสอบการกดปุ่มค้นหาจากทั้งสองจุด
         active_search_val = scanned_code_input.strip() if scanned_code_input else ""
 
-        if search_triggered and active_search_val:
+        if (search_triggered_top or search_triggered_bot) and active_search_val:
             st.session_state.active_search_query = active_search_val
 
         current_query = st.session_state.get("active_search_query", "")
