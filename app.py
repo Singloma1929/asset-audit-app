@@ -104,7 +104,7 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 🟢 ปรับแต่ง st.radio ให้วงกลมสถานะและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
+    /* 🟢 ตกแต่ง st.radio ให้วงกลมและตัวหนังสือเมื่อเลือกเป็น "สีเขียว" */
     div.row-widget.stRadio > div[role="radiogroup"] {
         background-color: #f8fafc;
         padding: 10px 15px;
@@ -113,7 +113,6 @@ st.markdown("""
         display: flex;
         justify-content: space-around;
     }
-    /* เปลี่ยนสีวงกลมสถานะ (Radio Indicator) เป็นสีเขียวเมื่อถูกเลือก */
     div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
         background-color: #22c55e !important;
         border-color: #22c55e !important;
@@ -121,7 +120,6 @@ st.markdown("""
     div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
         background-color: #ffffff !important;
     }
-    /* เปลี่ยนสีตัวหนังสือของแท็บที่กำลังเลือกให้เป็นสีเขียวเข้มและหนาขึ้น */
     div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
         color: #15803d !important;
         font-weight: 800 !important;
@@ -435,7 +433,7 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ใช้ st.radio แนวนอน (นำจุดเขียวออก เอาสีวงกลมเป็นสีเขียว และตัวหนังสือเป็นสีเขียวเข้มเมื่อเลือก) ---
+    # --- 🎛️ ใช้ st.radio แนวนอน (เลือกแท็บไหน วงกลม+ตัวหนังสือเปลี่ยนเป็นสีเขียวทันที) ---
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
@@ -622,19 +620,12 @@ else:
             if st.session_state.open_scanner:
                 render_live_qr_scanner()
 
-            col_mob_search, col_mob_clear = st.columns([4, 1])
-            with col_mob_search:
-                mobile_search = st.text_input(
-                    "พิมพ์ หรือวางหมายเลขครุภัณฑ์ที่สแกนได้:",
-                    key="mob_input_box",
-                    placeholder="พิมพ์รหัสครุภัณฑ์ (เช่น 100000019495) แล้วกด Enter..."
-                )
-            with col_mob_clear:
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                if st.button("🔄 ล้างค่า", use_container_width=True):
-                    st.session_state.mob_input_box = ""
-                    st.query_params.clear()
-                    st.rerun()
+            # ปรับช่องค้นหาให้ขยายเต็มความกว้าง (เอาปุ่มล้างค่าออกแล้วเพื่อให้ใช้งานง่ายและไม่เกิด Error)
+            mobile_search = st.text_input(
+                "พิมพ์ หรือวางหมายเลขครุภัณฑ์ที่สแกนได้:",
+                key="mob_input_box",
+                placeholder="พิมพ์รหัสครุภัณฑ์ (เช่น 100000019495) แล้วกด Enter..."
+            )
 
         if mobile_search and mobile_search.strip():
             kw = mobile_search.strip()
