@@ -314,23 +314,18 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
-def render_live_qr_scanner():
+def render_scanner_with_auto_extract():
     scanner_html = """
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
-        <div id="qr-reader" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
-        <div id="qr-result" style="margin-top: 10px; font-family: sans-serif; font-size: 15px; color: #16a34a; font-weight: bold;">
+        <div id="qr-reader" style="width: 100%; max-width: 380px; margin: 0 auto;"></div>
+        <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
             กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
-        </div>
-        <div id="copy-container" style="margin-top: 10px; display: none;">
-            <input type="text" id="scanned-code-box" readonly style="width: 70%; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #22c55e; border-radius: 6px; background: #fff;" />
-            <button onclick="copyToClipboard()" style="padding: 8px 14px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-left: 5px;">📋 คัดลอก</button>
         </div>
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
-        let detectedCode = "";
         const html5QrCode = new Html5Qrcode("qr-reader");
-        const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
+        const qrConfig = { fps: 10, qrbox: { width: 200, height: 200 } };
         
         html5QrCode.start(
             { facingMode: "environment" }, 
@@ -340,15 +335,16 @@ def render_live_qr_scanner():
                 if (code.includes("?scan=")) {
                     code = code.split("?scan=").pop().trim();
                 }
-                detectedCode = code;
+                
                 document.getElementById("qr-result").innerHTML = "✅ สแกนสำเร็จ: <span style='color: #1d4ed8;'>" + code + "</span>";
                 
-                document.getElementById("scanned-code-box").value = code;
-                document.getElementById("copy-container").style.display = "block";
-                
-                navigator.clipboard.writeText(code).then(() => {
-                    document.getElementById("qr-result").innerText = "✅ คัดลอกรหัส " + code + " ลงคลิปบอร์ดแล้ว! (นำไปวางในช่องค้นหาได้เลย)";
-                }).catch(err => {});
+                // ส่งค่าหมายเลขครุภัณฑ์ไปเก็บไว้ที่ Streamlit LocalStorage / URL query หรือ Element ซ่อน
+                const streamlitInput = window.parent.document.querySelector('input[aria-label="หมายเลขครุภัณฑ์ที่สแกนได้:"]');
+                if (streamlitInput) {
+                    streamlitInput.value = code;
+                    streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    streamlitInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
                 
                 html5QrCode.stop().catch(err => {});
             },
@@ -357,17 +353,9 @@ def render_live_qr_scanner():
             document.getElementById("qr-result").style.color = "#dc2626";
             document.getElementById("qr-result").innerText = "⚠️ ไม่สามารถเปิดกล้องได้ (โปรดอนุญาตให้ใช้กล้องในเบราว์เซอร์)";
         });
-
-        function copyToClipboard() {
-            const copyText = document.getElementById("scanned-code-box");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999);
-            navigator.clipboard.writeText(copyText.value);
-            alert("คัดลอกหมายเลข " + copyText.value + " เรียบร้อย! นำไปวางในช่องค้นหาได้เลยครับ");
-        }
     </script>
     """
-    return components.html(scanner_html, height=390)
+    return components.html(scanner_html, height=350)
 
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
@@ -375,8 +363,8 @@ if "flash_success_msg" in st.session_state:
     del st.session_state.flash_success_msg
 
 scanned_param = st.query_params.get("scan", "")
-if scanned_param and "mob_input_box" not in st.session_state:
-    st.session_state.mob_input_box = str(scanned_param).strip()
+if scanned_param and "scanned_asset_box" not in st.session_state:
+    st.session_state.scanned_asset_box = str(scanned_param).strip()
 
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
 
@@ -625,13 +613,13 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (ย่อช่องค้นหาด้านซ้ายครึ่งจอ)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (ย่อช่องสแกนซ้ายครึ่งจอ + ช่องแสดงเลขครุภัณฑ์แยกเฉพาะ + ปุ่มค้นหา)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
-        st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
+        st.write("ใช้สำหรับสแกน QR Code เพื่อดึงหมายเลขครุภัณฑ์และกดปุ่มค้นหาเพื่อบันทึกผลการตรวจได้ทันที")
         
-        # 🔽 แบ่งหน้าจอเป็นซ้าย 6 ส่วน ขวา 6 ส่วน เพื่อให้กรอบค้นหาย่อมาอยู่ครึ่งซ้าย
+        # แบ่งหน้าจอฝั่งซ้ายครึ่งเดียว (6 ส่วน)
         left_box, right_box = st.columns([6, 6])
         
         with left_box:
@@ -647,16 +635,30 @@ else:
                     st.rerun()
                 
                 if st.session_state.open_scanner:
-                    render_live_qr_scanner()
+                    render_scanner_with_auto_extract()
 
-                mobile_search = st.text_input(
-                    "พิมพ์ หรือวางหมายเลขครุภัณฑ์ที่สแกนได้:",
-                    key="mob_input_box",
-                    placeholder="พิมพ์รหัสครุภัณฑ์ แล้วกด Enter..."
+                # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ที่สแกนได้ (แยกต่างหาก)
+                scanned_code_input = st.text_input(
+                    "หมายเลขครุภัณฑ์ที่สแกนได้:",
+                    key="scanned_asset_box",
+                    placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
                 )
+                
+                # ปุ่มค้นหาขนาดกะทัดรัด
+                col_btn_search, col_space_btn = st.columns([1.5, 2.5])
+                with col_btn_search:
+                    search_triggered = st.button("🔍 ค้นหา", type="primary", use_container_width=True)
 
-        if mobile_search and mobile_search.strip():
-            kw = mobile_search.strip()
+        # เมื่อกดปุ่มค้นหา หรือมีค่าค้างไว้ ให้ดึงข้อมูลมาแสดงผลด้านล่าง
+        active_search_val = scanned_code_input.strip() if scanned_code_input else ""
+
+        if search_triggered and active_search_val:
+            st.session_state.active_search_query = active_search_val
+
+        current_query = st.session_state.get("active_search_query", "")
+
+        if current_query:
+            kw = current_query
             matched_mob = valid_df[
                 valid_df[target_column].astype(str).str.strip().str.contains(kw, case=False, na=False)
             ]
@@ -758,8 +760,6 @@ else:
                                 st.rerun()
             else:
                 st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ กรุณาตรวจสอบความถูกต้องอีกครั้งครับ")
-        else:
-            st.info("👈 กรุณาพิมพ์หมายเลขครุภัณฑ์ หรือใช้กล้อง **'📷 กดปุ่มสแกน QR Code'** ด้านบนเพื่อค้นหาและบันทึกผลการตรวจครับ")
 
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
