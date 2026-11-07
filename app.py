@@ -413,7 +413,7 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ ระบบเมนูปุ่มกด Navigation (แยกสีอิสระ ปุ่มที่เลือกจะเปลี่ยนเป็นสีเขียวอ่อน/ตัวหนังสือเขียว พร้อมจุดเขียว 🟢) ---
+    # --- 🎛️ ระบบเมนูปุ่มกด Navigation (ถ้าปุ่มไหนถูกเลือก ตัวหนังสือจะเปลี่ยนเป็นสีเขียว พร้อมจุด 🟢) ---
     if "active_menu" not in st.session_state:
         st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
 
@@ -452,32 +452,26 @@ else:
             st.session_state.active_menu = m4_name
             st.rerun()
 
-    # กำหนดสีพื้นหลังและสีตัวอักษร: ปุ่มไหนถูกเลือกจะเป็นสีเขียวอ่อน/ตัวหนังสือสีเขียวเข้ม ปุ่มไหนไม่ได้เลือกจะใช้สีประจำตัว
+    # กำหนดสีตัวอักษรเฉพาะปุ่มที่กำลังทำงานอยู่ให้เป็นสีเขียวเข้มเด่นชัด
     active_menu = st.session_state.active_menu
     
-    bg_1 = "#dcfce7" if is_active_1 else "#dbeafe"
-    col_1 = "#15803d" if is_active_1 else "#1e40af"
-    bdr_1 = "#22c55e" if is_active_1 else "#93c5fd"
+    color_1 = "#15803d" if is_active_1 else "#334155"
+    color_2 = "#15803d" if is_active_2 else "#334155"
+    color_3 = "#15803d" if is_active_3 else "#334155"
+    color_4 = "#15803d" if is_active_4 else "#334155"
 
-    bg_2 = "#dcfce7" if is_active_2 else "#f0fdf4"
-    col_2 = "#15803d" if is_active_2 else "#166534"
-    bdr_2 = "#22c55e" if is_active_2 else "#86efac"
-
-    bg_3 = "#dcfce7" if is_active_3 else "#fef3c7"
-    col_3 = "#15803d" if is_active_3 else "#92400e"
-    bdr_3 = "#22c55e" if is_active_3 else "#fde047"
-
-    bg_4 = "#dcfce7" if is_active_4 else "#f3e8ff"
-    col_4 = "#15803d" if is_active_4 else "#6b21a8"
-    bdr_4 = "#22c55e" if is_active_4 else "#d8b4fe"
+    weight_1 = "700" if is_active_1 else "500"
+    weight_2 = "700" if is_active_2 else "500"
+    weight_3 = "700" if is_active_3 else "500"
+    weight_4 = "700" if is_active_4 else "500"
 
     st.markdown(f"""
         <style>
-        /* จัดแต่งสไตล์ปุ่ม Navigation แต่ละปุ่มให้ออิสระจากกัน */
-        div[data-testid="column"]:nth-of-type(1) button {{ background-color: {bg_1} !important; border: 2px solid {bdr_1} !important; color: {col_1} !important; font-weight: 700; border-radius: 8px; }}
-        div[data-testid="column"]:nth-of-type(2) button {{ background-color: {bg_2} !important; border: 2px solid {bdr_2} !important; color: {col_2} !important; font-weight: 700; border-radius: 8px; }}
-        div[data-testid="column"]:nth-of-type(3) button {{ background-color: {bg_3} !important; border: 2px solid {bdr_3} !important; color: {col_3} !important; font-weight: 700; border-radius: 8px; }}
-        div[data-testid="column"]:nth-of-type(4) button {{ background-color: {bg_4} !important; border: 2px solid {bdr_4} !important; color: {col_4} !important; font-weight: 700; border-radius: 8px; }}
+        /* จัดแต่งสีตัวอักษรและน้ำหนักของปุ่ม Navigation แบบแยกอิสระ */
+        div[data-testid="column"]:nth-of-type(1) button {{ color: {color_1} !important; font-weight: {weight_1} !important; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(2) button {{ color: {color_2} !important; font-weight: {weight_2} !important; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(3) button {{ color: {color_3} !important; font-weight: {weight_3} !important; border-radius: 8px; }}
+        div[data-testid="column"]:nth-of-type(4) button {{ color: {color_4} !important; font-weight: {weight_4} !important; border-radius: 8px; }}
         </style>
     """, unsafe_allow_html=True)
 
