@@ -314,8 +314,8 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
-# 🔄 ปรับปรุงสคริปต์กล้องให้ส่งค่าผ่าน URL Query Parameter แล้วสั่ง st.rerun() ทันที
-def render_scanner_with_auto_extract():
+# 🔄 ปรับปรุงสคริปต์กล้อง: สแกนปุ๊บ ส่ง URL/ข้อความทั้งหมดไปที่ช่องค้นหา ปิดกล้อง และรีเฟรชหน้าทันที
+def render_scanner_with_full_data():
     scanner_html = """
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 380px; margin: 0 auto;"></div>
@@ -332,14 +332,11 @@ def render_scanner_with_auto_extract():
             { facingMode: "environment" }, 
             qrConfig,
             (decodedText, decodedResult) => {
-                let code = decodedText.trim();
-                if (code.includes("?scan=")) {
-                    code = code.split("?scan=").pop().trim();
-                }
+                let fullData = decodedText.trim();
                 
-                // สั่งเปลี่ยน URL เพื่อส่งค่ารหัสกลับมาที่ Streamlit และรีเฟรชหน้าจออัตโนมัติ
+                // ส่งข้อมูลทั้งหมดจาก QR Code ไปที่ URL เพื่อให้ Python จัดการต่อและปิดกล้องอัตโนมัติ
                 const currentUrl = window.location.href.split('?')[0];
-                window.location.href = currentUrl + "?scan=" + encodeURIComponent(code);
+                window.location.href = currentUrl + "?scan=" + encodeURIComponent(fullData);
                 
                 html5QrCode.stop().catch(err => {});
             },
@@ -357,12 +354,19 @@ if "flash_success_msg" in st.session_state:
     st.success(st.session_state.flash_success_msg)
     del st.session_state.flash_success_msg
 
-# 📥 รับค่ารหัสจากกล้องผ่าน URL Query Parameter
+# 📥 รับข้อมูลดิบทั้งหมดจาก QR Code ผ่าน URL Query Parameter
 scanned_param = st.query_params.get("scan", "")
 if scanned_param:
-    st.session_state.scanned_asset_box = str(scanned_param).strip()
-    st.session_state.active_search_query = str(scanned_param).strip()
-    # ล้างค่า query param ทิ้งเพื่อไม่ให้ค้างเวลาเปลี่ยนหน้า
+    raw_text = str(scanned_param).strip()
+    # ดึงเฉพาะรหัสหลัง ?scan= หรือถ้าไม่มี ให้ใช้ข้อความทั้งหมดจาก QR Code ตรงๆ
+    if "?scan=" in raw_text:
+        extracted_code = raw_text.split("?scan=").pop().split("&")[0].strip()
+    else:
+        extracted_code = raw_text
+
+    st.session_state.scanned_asset_box = extracted_code
+    st.session_state.active_search_query = extracted_code
+    st.session_state.auto_scanned_trigger = True
     st.query_params.clear()
 
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
@@ -612,7 +616,7 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search ทันทีหลังสแกนสำเร็จ)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (Auto Search & Close Camera ทันที)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
@@ -627,13 +631,17 @@ else:
                 if "open_scanner" not in st.session_state:
                     st.session_state.open_scanner = False
                 
+                # หากมีการสแกนเข้ามาแล้ว ให้ปิดกล้องอัตโนมัติทันที
+                if st.session_state.get("auto_scanned_trigger", False):
+                    st.session_state.open_scanner = False
+
                 btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 กดปุ่มสแกน QR Code หมายเลขพัสดุ"
                 if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
                     st.session_state.open_scanner = not st.session_state.open_scanner
                     st.rerun()
                 
                 if st.session_state.open_scanner:
-                    render_scanner_with_auto_extract()
+                    render_scanner_with_full_data()
 
                 # ช่องกรอกหมายเลขครุภัณฑ์ เพื่อค้นหา
                 scanned_code_input = st.text_input(
@@ -648,6 +656,11 @@ else:
                     search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
 
         active_search_val = scanned_code_input.strip() if scanned_code_input else ""
+
+        is_auto_scanned = st.session_state.get("auto_scanned_trigger", False)
+        if is_auto_scanned:
+            st.session_state.auto_scanned_trigger = False
+            search_triggered_mid = True
 
         if search_triggered_mid and active_search_val:
             st.session_state.active_search_query = active_search_val
