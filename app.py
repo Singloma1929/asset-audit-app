@@ -37,15 +37,15 @@ st.set_page_config(
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 2.5rem;
+        padding-top: 2rem;
         padding-bottom: 2rem;
     }
     .app-header {
         font-size: 28px;
         font-weight: 700;
         color: #1f2937;
-        margin-top: 10px;
-        margin-bottom: 12px;
+        margin-top: 5px;
+        margin-bottom: 10px;
     }
     .stAlert {
         padding: 8px 14px !important;
@@ -103,69 +103,7 @@ st.markdown("""
         padding: 8px 8px;
         border-radius: 8px;
     }
-
-    /* 🎨 จัดแต่งพื้นหลังกลุ่มแท็บเมนู */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 12px;
-        background-color: #f1f5f9;
-        padding: 12px;
-        border-radius: 12px;
-        border: 1px solid #cbd5e1;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 46px;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 14px;
-        padding: 0 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        transition: all 0.2s ease-in-out;
-    }
     </style>
-""", unsafe_allow_html=True)
-
-# 🛠️ ใช้ JavaScript ช่วยบังคับเปลี่ยนสีพื้นหลังและสีข้อความของแต่ละ Tab ให้แตกต่างกันอย่างชัดเจน 100%
-st.markdown("""
-    <script>
-    const setTabColors = () => {
-        const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
-        if (tabs.length >= 4) {
-            // แท็บที่ 1: ค้นหา (สีฟ้า)
-            tabs[0].style.backgroundColor = '#dbeafe';
-            tabs[0].style.color = '#1e40af';
-            tabs[0].style.border = '2px solid #93c5fd';
-            
-            // แท็บที่ 2: ตรวจครุภัณฑ์ (สีเขียว)
-            tabs[1].style.backgroundColor = '#dcfce7';
-            tabs[1].style.color = '#166534';
-            tabs[1].style.border = '2px solid #86efac';
-            
-            // แท็บที่ 3: QR Code (สีส้ม/เหลือง)
-            tabs[2].style.backgroundColor = '#fef3c7';
-            tabs[2].style.color = '#92400e';
-            tabs[2].style.border = '2px solid #fde047';
-            
-            // แท็บที่ 4: ส่งออกรายงาน (สีม่วง)
-            tabs[3].style.backgroundColor = '#f3e8ff';
-            tabs[3].style.color = '#6b21a8';
-            tabs[3].style.border = '2px solid #d8b4fe';
-
-            // จัดการแท็บที่ถูกเลือก (Active Tab) ให้เด่นชัด
-            tabs.forEach(tab => {
-                if (tab.getAttribute('aria-selected') === 'true') {
-                    tab.style.background = 'linear-gradient(135deg, #0f172a, #1e293b)';
-                    tab.style.color = '#ffffff';
-                    tab.style.border = '2px solid #0f172a';
-                    tab.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)';
-                }
-            });
-        }
-    };
-    // รันสคริปต์ทันทีและคอยดักฟังการคลิกเปลี่ยนแท็บ
-    window.addEventListener('DOMContentLoaded', setTabColors);
-    setTimeout(setTabColors, 100);
-    document.addEventListener('click', () => setTimeout(setTabColors, 50));
-    </script>
 """, unsafe_allow_html=True)
 
 # หัวข้อโปรเจกต์
@@ -475,13 +413,59 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # 4 แท็บเมนูหลัก
-    main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
-        "🔍 ค้นหา/โหมดแก้ไขรายละเอียด", 
-        "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ",
-        "🏷️ สร้าง QR Code", 
-        "📥 ส่งออกรายงาน Excel"
-    ])
+    # --- 🎛️ สร้างระบบเมนูปุ่มกด (Navigation Buttons) แทน Tabs ปกติ เพื่อคุมสีและตัวอักษรสีเขียวได้อย่างสมบูรณ์ ---
+    if "active_menu" not in st.session_state:
+        st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+
+    # จัดวางปุ่มเมนูทั้ง 4 ใน 4 คอลัมน์
+    b1, b2, b3, b4 = st.columns(4)
+
+    with b1:
+        is_active_1 = st.session_state.active_menu == "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+        btn_label_1 = "🟢 🔍 ค้นหา/โหมดแก้ไขรายละเอียด" if is_active_1 else "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+        if st.button(btn_label_1, use_container_width=True):
+            st.session_state.active_menu = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
+            st.rerun()
+
+    with b2:
+        is_active_2 = st.session_state.active_menu == "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
+        btn_label_2 = "🟢 📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ" if is_active_2 else "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
+        if st.button(btn_label_2, use_container_width=True):
+            st.session_state.active_menu = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
+            st.rerun()
+
+    with b3:
+        is_active_3 = st.session_state.active_menu == "🏷️ สร้าง QR Code"
+        btn_label_3 = "🟢 🏷️ สร้าง QR Code" if is_active_3 else "🏷️ สร้าง QR Code"
+        if st.button(btn_label_3, use_container_width=True):
+            st.session_state.active_menu = "🏷️ สร้าง QR Code"
+            st.rerun()
+
+    with b4:
+        is_active_4 = st.session_state.active_menu == "📥 ส่งออกรายงาน Excel"
+        btn_label_4 = "🟢 📥 ส่งออกรายงาน Excel" if is_active_4 else "📥 ส่งออกรายงาน Excel"
+        if st.button(btn_label_4, use_container_width=True):
+            st.session_state.active_menu = "📥 ส่งออกรายงาน Excel"
+            st.rerun()
+
+    # ตกแต่งสีพื้นหลังของปุ่มแต่ละปุ่มให้แตกต่างกันชัดเจน และหากเลือกอยู่ตัวอักษรจะเป็นสีเขียวเด่นชัด
+    active_menu = st.session_state.active_menu
+    c1_color = "#15803d" if active_menu == "🔍 ค้นหา/โหมดแก้ไขรายละเอียด" else "#1e40af"
+    c2_color = "#15803d" if active_menu == "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ" else "#166534"
+    c3_color = "#15803d" if active_menu == "🏷️ สร้าง QR Code" else "#92400e"
+    c4_color = "#15803d" if active_menu == "📥 ส่งออกรายงาน Excel" else "#6b21a8"
+
+    st.markdown(f"""
+        <style>
+        /* จัดแต่งปุ่มเมนูทั้ง 4 ให้มีสีพื้นหลังต่างกันอย่างสวยงาม */
+        div.stButton:nth-of-type(1) > button {{ background-color: #dbeafe !important; border: 2px solid #93c5fd !important; color: {c1_color} !important; font-weight: 700; border-radius: 8px; }}
+        div.stButton:nth-of-type(2) > button {{ background-color: #dcfce7 !important; border: 2px solid #86efac !important; color: {c2_color} !important; font-weight: 700; border-radius: 8px; }}
+        div.stButton:nth-of-type(3) > button {{ background-color: #fef3c7 !important; border: 2px solid #fde047 !important; color: {c3_color} !important; font-weight: 700; border-radius: 8px; }}
+        div.stButton:nth-of-type(4) > button {{ background-color: #f3e8ff !important; border: 2px solid #d8b4fe !important; color: {c4_color} !important; font-weight: 700; border-radius: 8px; }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
     
     status_options = [
         "ตรวจแล้ว",
@@ -489,9 +473,9 @@ else:
     ]
 
     # =========================================================================
-    # TAB 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
+    # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด (แอดมิน)
     # =========================================================================
-    with main_tab1:
+    if active_menu == "🔍 ค้นหา/โหมดแก้ไขรายละเอียด":
         st.subheader("🔍 ค้นหาข้อมูลครุภัณฑ์")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -633,9 +617,9 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # TAB 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ
     # =========================================================================
-    with main_tab2:
+    elif active_menu == "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ":
         st.subheader("📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ / แก้ไขผลการตรวจ")
         st.write("ใช้สำหรับสแกน QR Code หรือพิมพ์ค้นหาหมายเลขครุภัณฑ์เพื่อบันทึกหรือแก้ไขผลการตรวจได้ทันที")
         
@@ -773,9 +757,9 @@ else:
             st.info("👈 กรุณาพิมพ์หมายเลขครุภัณฑ์, ชื่อรายการ หรือใช้กล้อง **'📷 กดปุ่มสแกน QR Code'** ด้านบนเพื่อค้นหาและบันทึกผลการตรวจครับ")
 
     # =========================================================================
-    # TAB 3: สร้าง QR Code
+    # เมนูที่ 3: สร้าง QR Code
     # =========================================================================
-    with main_tab3:
+    elif active_menu == "🏷️ สร้าง QR Code":
         st.subheader("🏷️ ระบบสร้าง QR Code พร้อมลิงก์สแกนด่วน")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
         
@@ -825,9 +809,9 @@ else:
             )
 
     # =========================================================================
-    # TAB 4: ส่งออกรายงาน Excel
+    # เมนูที่ 4: ส่งออกรายงาน Excel
     # =========================================================================
-    with main_tab4:
+    elif active_menu == "📥 ส่งออกรายงาน Excel":
         st.subheader("📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบประจำปี")
         st.write("ข้อมูลการตรวจสอบทั้งหมด (รวมช่องหมายเหตุและสถานะด้านท้าย) สามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
         
