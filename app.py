@@ -426,6 +426,11 @@ def render_auto_submit_qr_scanner():
     """
     return components.html(scanner_html, height=340)
 
+# ตรวจสอบตัวแปรแจ้งเตือนการแก้ไขข้อมูลบน Cloud
+if "cloud_save_success_toast" in st.session_state:
+    show_1sec_popup("✅ บันทึกข้อมูลขึ้น cloud แล้ว", is_success=True)
+    del st.session_state.cloud_save_success_toast
+
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
     st.success(st.session_state.flash_success_msg)
@@ -515,7 +520,6 @@ else:
         )
         if selected_top_other != "เลือกดูสภาพ...":
             other_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == selected_top_other)])
-            # 🔍 ขยายขนาดตัวอักษร "จำนวน: X ราย" ให้ใหญ่และชัดเจนยิ่งขึ้น
             st.markdown(f"<div style='font-size: 15px; font-weight: 700; color: #1d4ed8; text-align: center; margin-top: -6px;'>จำนวน: {other_count} ราย</div>", unsafe_allow_html=True)
         else:
             st.markdown("<div style='font-size: 12px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกดูจำนวน</div>", unsafe_allow_html=True)
@@ -646,7 +650,7 @@ else:
                             )
                             if ok:
                                 get_shared_data.clear()
-                                st.session_state.flash_success_msg = f"✅ อัปเดตข้อมูลครุภัณฑ์ {edit_target} เรียบร้อยแล้ว!"
+                                st.session_state.cloud_save_success_toast = True
                                 st.rerun()
 
                 else:
@@ -684,7 +688,7 @@ else:
                                 )
                                 if ok:
                                     get_shared_data.clear()
-                                    st.session_state.flash_success_msg = f"✅ เพิ่มรายการครุภัณฑ์ใหม่สำเร็จแล้ว!"
+                                    st.session_state.cloud_save_success_toast = True
                                     st.rerun()
 
     elif selected_menu == m2_name:
