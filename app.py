@@ -294,15 +294,12 @@ def get_shared_data(fiscal_year_str):
 
     return df, target_col, year_key
 
-# 🔄 ปรับปรุงฟังก์ชันบันทึกข้อมูลให้ปลอดภัย รองรับตารางแบบเดิมได้ทันที
 def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, fiscal_year, extra_dict=None):
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return False
     try:
         clean_code = str(asset_code).strip()
-        
-        # เช็คข้อมูลเดิมที่มีอยู่แล้วของรหัสนี้และปีนี้
         existing = supabase.table("core_assetauditrecord").select("id, note").eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).execute()
         
         saved_extra = {}
@@ -338,10 +335,8 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
         }
 
         if record_id:
-            # ถ้ามีอยู่แล้วให้อัปเดตด้วย ID ตรงๆ
             supabase.table("core_assetauditrecord").update(data_payload).eq("id", record_id).execute()
         else:
-            # ถ้ายังไม่มีให้เพิ่มใหม่
             supabase.table("core_assetauditrecord").insert(data_payload).execute()
 
         return True
@@ -520,7 +515,8 @@ else:
         )
         if selected_top_other != "เลือกดูสภาพ...":
             other_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == selected_top_other)])
-            st.markdown(f"<div style='font-size: 13px; font-weight: bold; color: #1d4ed8; text-align: center; margin-top: -8px;'>จำนวน: {other_count} ราย</div>", unsafe_allow_html=True)
+            # 🔍 ขยายขนาดตัวอักษร "จำนวน: X ราย" ให้ใหญ่และชัดเจนยิ่งขึ้น
+            st.markdown(f"<div style='font-size: 15px; font-weight: 700; color: #1d4ed8; text-align: center; margin-top: -6px;'>จำนวน: {other_count} ราย</div>", unsafe_allow_html=True)
         else:
             st.markdown("<div style='font-size: 12px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกดูจำนวน</div>", unsafe_allow_html=True)
 
