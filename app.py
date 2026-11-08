@@ -159,7 +159,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ฟังก์ชันแสดงป๊อบอัพชั่วคราว 1 วินาที
 def show_1sec_popup(message, is_success=True):
     cls = "popup-success" if is_success else "popup-error"
     st.markdown(f"<div class='auto-popup-badge {cls}'>{message}</div>", unsafe_allow_html=True)
@@ -295,15 +294,21 @@ def get_shared_data(fiscal_year_str):
 
     return df, target_col, year_key
 
+# 🔄 ปรับปรุงฟังก์ชันบันทึกข้อมูลให้ปลอดภัย รองรับตารางแบบเดิมได้ทันที
 def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, fiscal_year, extra_dict=None):
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return False
     try:
         clean_code = str(asset_code).strip()
-        existing = supabase.table("core_assetauditrecord").select("note").eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).execute()
+        
+        # เช็คข้อมูลเดิมที่มีอยู่แล้วของรหัสนี้และปีนี้
+        existing = supabase.table("core_assetauditrecord").select("id, note").eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).execute()
+        
         saved_extra = {}
+        record_id = None
         if existing.data:
+            record_id = existing.data[0].get("id")
             old_note = str(existing.data[0].get("note", ""))
             if "||ASSET_DATA||" in old_note:
                 try:
@@ -331,7 +336,14 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
             "updated_at": timestamp,
             "fiscal_year": fiscal_year
         }
-        supabase.table("core_assetauditrecord").upsert(data_payload, on_conflict="asset_code,fiscal_year").execute()
+
+        if record_id:
+            # ถ้ามีอยู่แล้วให้อัปเดตด้วย ID ตรงๆ
+            supabase.table("core_assetauditrecord").update(data_payload).eq("id", record_id).execute()
+        else:
+            # ถ้ายังไม่มีให้เพิ่มใหม่
+            supabase.table("core_assetauditrecord").insert(data_payload).execute()
+
         return True
     except Exception as e:
         st.error(f"⚠️ ไม่สามารถบันทึกลง Supabase ได้: {e}")
@@ -351,7 +363,6 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
-# 🚀 ฟังก์ชันสแกน QR Code ประสิทธิภาพสูง: สแกนปุ๊บ ตัดเอาเฉพาะเลขครุภัณฑ์ ยัดใส่ช่องค้นหาของ React และกดค้นหาให้อัตโนมัติทันที!
 def render_auto_submit_qr_scanner():
     scanner_html = """
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
@@ -376,7 +387,6 @@ def render_auto_submit_qr_scanner():
                 let rawData = decodedText.trim();
                 let assetCode = rawData;
                 
-                // ซ่อนข้อมูลอื่นที่ติดมา ดึงเฉพาะหมายเลขครุภัณฑ์
                 if (rawData.includes("?scan=")) {
                     assetCode = rawData.split("?scan=").pop().split("&")[0].trim();
                 }
@@ -388,7 +398,6 @@ def render_auto_submit_qr_scanner():
                     const targetInput = parentDoc.querySelector('input[aria-label="กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"]');
                     
                     if (targetInput) {
-                        // ใช้ Native Setter ของ React เพื่อให้ Streamlit รับรู้ค่าที่เปลี่ยนไป 100%
                         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
                         nativeInputValueSetter.call(targetInput, assetCode);
                         
@@ -396,7 +405,6 @@ def render_auto_submit_qr_scanner():
                         targetInput.dispatchEvent(new Event('change', { bubbles: true }));
                         targetInput.focus();
 
-                        // จำลองการกดปุ่ม Enter และคลิกปุ่มค้นหาอัตโนมัติ
                         setTimeout(() => {
                             const enterEvent = new KeyboardEvent('keydown', {
                                 bubbles: true, cancelable: true, keyCode: 13, key: 'Enter', code: 'Enter'
@@ -428,9 +436,6 @@ if "flash_success_msg" in st.session_state:
     st.success(st.session_state.flash_success_msg)
     del st.session_state.flash_success_msg
 
-df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
-
-# กรณีสแกนมาจากกล้องโทรศัพท์ภายนอกผ่านลิงก์ ?scan=...
 scanned_param = st.query_params.get("scan", "")
 if scanned_param:
     clean_scan = str(scanned_param).strip()
@@ -442,6 +447,8 @@ if scanned_param:
     st.session_state.trigger_popup_check = True
     st.session_state.nav_menu_radio = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     st.query_params.clear()
+
+df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
 
 if df is None:
     st.error(f"⚠️ ไม่พบไฟล์ข้อมูลของ **{selected_fiscal_year}** บนระบบ โปรดตรวจสอบชื่อไฟล์ Excel บน GitHub อีกครั้งครับ")
@@ -519,7 +526,6 @@ else:
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-    # --- 🎛️ เมนูนำทาง (Tabs) ---
     m1_name = "🔍 ค้นหา/โหมดแก้ไขรายละเอียด"
     m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     m3_name = "🏷️ สร้าง QR Code"
@@ -542,9 +548,6 @@ else:
         "ยังไม่ตรวจ"
     ]
 
-    # =========================================================================
-    # เมนูที่ 1: ค้นหา และ โหมดแก้ไขรายละเอียด
-    # =========================================================================
     if selected_menu == m1_name:
         st.subheader(f"🔍 ค้นหาข้อมูลครุภัณฑ์ ({selected_fiscal_year})")
         
@@ -688,14 +691,10 @@ else:
                                     st.session_state.flash_success_msg = f"✅ เพิ่มรายการครุภัณฑ์ใหม่สำเร็จแล้ว!"
                                     st.rerun()
 
-    # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (สแกนปุ๊บ ค้นหาอัตโนมัติ + ป๊อบอัพ 1 วินาที)
-    # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือกรอกหมายเลขครุภัณฑ์เพื่อค้นหาและบันทึกผลการตรวจ")
         
-        # Callback เมื่อมีการส่งค่าเข้าช่องค้นหา (จากการสแกนอัตโนมัติหรือกด Enter)
         def on_asset_input_change():
             raw_val = st.session_state.get("scanned_asset_box", "").strip()
             if raw_val:
@@ -722,7 +721,6 @@ else:
                 if st.session_state.open_scanner:
                     render_auto_submit_qr_scanner()
 
-                # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ (เชื่อมกับ on_change เพื่อทำงานอัตโนมัติทันทีที่สแกนเสร็จ)
                 scanned_code_input = st.text_input(
                     "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
                     key="scanned_asset_box",
@@ -730,7 +728,6 @@ else:
                     on_change=on_asset_input_change
                 )
                 
-                # ปุ่มค้นหาสำหรับกรณีพิมพ์เองแล้วคลิกปุ่ม
                 col_btn_mid, col_space_mid = st.columns([1.5, 2.5])
                 with col_btn_mid:
                     search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
@@ -755,7 +752,6 @@ else:
                     valid_df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False, regex=False)).any(axis=1)
                 ]
 
-            # แสดงป๊อบอัพ 1 วินาทีเมื่อเพิ่งสแกนหรือกดค้นหา
             if st.session_state.get("trigger_popup_check", False):
                 st.session_state.trigger_popup_check = False
                 if not matched_mob.empty:
@@ -857,9 +853,6 @@ else:
             else:
                 st.warning(f"⚠️ ไม่พบข้อมูลครุภัณฑ์รหัส '{search_term}' ในระบบ (QR Code อาจไม่ถูกต้องหรือเป็นข้อมูลจากแหล่งอื่น)")
 
-    # =========================================================================
-    # เมนูที่ 3: สร้าง QR Code
-    # =========================================================================
     elif selected_menu == m3_name:
         st.subheader(f"🏷️ ระบบสร้าง QR Code ({selected_fiscal_year})")
         selected_qr_item = st.selectbox(f"เลือกหมายเลขครุภัณฑ์ที่ต้องการสร้าง QR", options=df[valid_mask][target_column].tolist(), key="gen_qr_tab")
@@ -909,9 +902,6 @@ else:
                 mime="image/png"
             )
 
-    # =========================================================================
-    # เมนูที่ 4: ส่งออกรายงาน Excel
-    # =========================================================================
     elif selected_menu == m4_name:
         st.subheader(f"📥 ดาวน์โหลดรายงานสรุปผลการตรวจสอบ ({selected_fiscal_year})")
         st.write("ข้อมูลการตรวจสอบทั้งหมดสามารถกดดาวน์โหลดเป็นไฟล์ Excel ได้ทันทีครับ")
