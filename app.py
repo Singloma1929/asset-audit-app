@@ -124,8 +124,45 @@ st.markdown("""
         color: #15803d !important;
         font-weight: 800 !important;
     }
+
+    /* 💬 สไตล์สำหรับป๊อบอัพแจ้งเตือน 1 วินาที แล้วหายไปเองอัตโนมัติ */
+    @keyframes popupFadeOut {
+        0% { opacity: 1; transform: translate(-50%, -50%) scale(0.95); }
+        15% { opacity: 1; transform: translate(-50%, -50%) scale(1.02); }
+        75% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); visibility: hidden; }
+    }
+    .auto-popup-badge {
+        position: fixed;
+        top: 35%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 999999;
+        padding: 18px 32px;
+        border-radius: 12px;
+        font-size: 20px;
+        font-weight: 700;
+        color: #ffffff;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+        pointer-events: none;
+        animation: popupFadeOut 1.2s ease-in-out forwards;
+        text-align: center;
+    }
+    .popup-success {
+        background-color: rgba(22, 163, 74, 0.95);
+        border: 2px solid #bbf7d0;
+    }
+    .popup-error {
+        background-color: rgba(220, 38, 38, 0.95);
+        border: 2px solid #fecaca;
+    }
     </style>
 """, unsafe_allow_html=True)
+
+# ฟังก์ชันแสดงป๊อบอัพชั่วคราว 1 วินาที
+def show_1sec_popup(message, is_success=True):
+    cls = "popup-success" if is_success else "popup-error"
+    st.markdown(f"<div class='auto-popup-badge {cls}'>{message}</div>", unsafe_allow_html=True)
 
 # หัวข้อโปรเจกต์
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Cloud Version)</div>", unsafe_allow_html=True)
@@ -162,7 +199,7 @@ def get_shared_data(fiscal_year_str):
             break
 
     if not default_file:
-        return None, None
+        return None, None, None
 
     if default_file.endswith('.csv'):
         raw_df = pd.read_csv(default_file, header=None)
@@ -314,46 +351,66 @@ def render_save_status_badge(status_val, timestamp_val):
     else:
         st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
-# 🔄 สคริปต์สแกน: สแกนสำเร็จ นำข้อมูลดิบทั้งหมดใส่ช่องค้นหา และปิดกล้องทันทีโดยไม่รีเฟรชหน้าจอ
-def render_scanner_with_raw_inject():
+# 🚀 ฟังก์ชันสแกน QR Code ประสิทธิภาพสูง: สแกนปุ๊บ ตัดเอาเฉพาะเลขครุภัณฑ์ ยัดใส่ช่องค้นหาของ React และกดค้นหาให้อัตโนมัติทันที!
+def render_auto_submit_qr_scanner():
     scanner_html = """
     <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center;">
         <div id="qr-reader" style="width: 100%; max-width: 380px; margin: 0 auto;"></div>
         <div id="qr-result" style="margin-top: 8px; font-family: sans-serif; font-size: 14px; color: #16a34a; font-weight: bold;">
-            กำลังเปิดกล้องส่อง QR Code...
+            📷 กำลังเปิดกล้อง... ส่องไปที่ป้าย QR Code
         </div>
     </div>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
         const html5QrCode = new Html5Qrcode("qr-reader");
-        const qrConfig = { fps: 10, qrbox: { width: 200, height: 200 } };
+        const qrConfig = { fps: 15, qrbox: { width: 220, height: 220 } };
+        let isSubmitted = false;
         
         html5QrCode.start(
             { facingMode: "environment" }, 
             qrConfig,
             (decodedText, decodedResult) => {
-                let fullData = decodedText.trim();
+                if (isSubmitted) return;
+                isSubmitted = true;
+
+                let rawData = decodedText.trim();
+                let assetCode = rawData;
                 
-                // ค้นหาช่อง input ของ Streamlit ที่มี placeholder ตรงกัน แล้วยัดข้อมูลดิบลงไป
-                const inputs = window.parent.document.querySelectorAll('input');
-                for (let input of inputs) {
-                    if (input.placeholder && input.placeholder.includes("สแกน QR Code หรือพิมพ์หมายเลข")) {
-                        input.value = fullData;
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                        break;
-                    }
+                // ซ่อนข้อมูลอื่นที่ติดมา ดึงเฉพาะหมายเลขครุภัณฑ์
+                if (rawData.includes("?scan=")) {
+                    assetCode = rawData.split("?scan=").pop().split("&")[0].trim();
                 }
-                
-                // ปิดกล้องทันที
+
+                document.getElementById("qr-result").innerHTML = "🔄 กำลังดึงข้อมูลรหัส: <span style='color:#1d4ed8;'>" + assetCode + "</span>...";
+
                 html5QrCode.stop().then(() => {
-                    // ส่งสัญญาณปิดกล้องให้ Streamlit ทราบผ่านการกดปุ่มปิด
-                    const buttons = window.parent.document.querySelectorAll('button');
-                    for (let btn of buttons) {
-                        if (btn.innerText.includes("ปิดกล้องสแกน QR Code")) {
-                            btn.click();
-                            break;
-                        }
+                    const parentDoc = window.parent.document;
+                    const targetInput = parentDoc.querySelector('input[aria-label="กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"]');
+                    
+                    if (targetInput) {
+                        // ใช้ Native Setter ของ React เพื่อให้ Streamlit รับรู้ค่าที่เปลี่ยนไป 100%
+                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                        nativeInputValueSetter.call(targetInput, assetCode);
+                        
+                        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        targetInput.focus();
+
+                        // จำลองการกดปุ่ม Enter และคลิกปุ่มค้นหาอัตโนมัติ
+                        setTimeout(() => {
+                            const enterEvent = new KeyboardEvent('keydown', {
+                                bubbles: true, cancelable: true, keyCode: 13, key: 'Enter', code: 'Enter'
+                            });
+                            targetInput.dispatchEvent(enterEvent);
+
+                            const buttons = parentDoc.querySelectorAll('button');
+                            for (let btn of buttons) {
+                                if (btn.innerText.includes("🔍 ค้นหา")) {
+                                    btn.click();
+                                    break;
+                                }
+                            }
+                        }, 150);
                     }
                 }).catch(err => {});
             },
@@ -364,18 +421,27 @@ def render_scanner_with_raw_inject():
         });
     </script>
     """
-    return components.html(scanner_html, height=330)
+    return components.html(scanner_html, height=340)
 
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
     st.success(st.session_state.flash_success_msg)
     del st.session_state.flash_success_msg
 
+df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
+
+# กรณีสแกนมาจากกล้องโทรศัพท์ภายนอกผ่านลิงก์ ?scan=...
 scanned_param = st.query_params.get("scan", "")
 if scanned_param:
+    clean_scan = str(scanned_param).strip()
+    if "?scan=" in clean_scan:
+        clean_scan = clean_scan.split("?scan=").pop().split("&")[0].strip()
+    st.session_state.scanned_asset_box = clean_scan
+    st.session_state.active_search_query = clean_scan
+    st.session_state.open_scanner = False
+    st.session_state.trigger_popup_check = True
+    st.session_state.nav_menu_radio = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     st.query_params.clear()
-
-df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
 
 if df is None:
     st.error(f"⚠️ ไม่พบไฟล์ข้อมูลของ **{selected_fiscal_year}** บนระบบ โปรดตรวจสอบชื่อไฟล์ Excel บน GitHub อีกครั้งครับ")
@@ -465,7 +531,8 @@ else:
         "เลือกเมนูการทำงาน:",
         options=menu_options,
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="nav_menu_radio"
     )
 
     st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
@@ -622,12 +689,22 @@ else:
                                     st.rerun()
 
     # =========================================================================
-    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (สแกนปุ๊บ วางข้อมูลดิบลงช่อง + ปิดกล้องทันที)
+    # เมนูที่ 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (สแกนปุ๊บ ค้นหาอัตโนมัติ + ป๊อบอัพ 1 วินาที)
     # =========================================================================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือกรอกหมายเลขครุภัณฑ์เพื่อค้นหาและบันทึกผลการตรวจ")
         
+        # Callback เมื่อมีการส่งค่าเข้าช่องค้นหา (จากการสแกนอัตโนมัติหรือกด Enter)
+        def on_asset_input_change():
+            raw_val = st.session_state.get("scanned_asset_box", "").strip()
+            if raw_val:
+                clean_code = raw_val.split("?scan=").pop().split("&")[0].strip() if "?scan=" in raw_val else raw_val
+                st.session_state.scanned_asset_box = clean_code
+                st.session_state.active_search_query = clean_code
+                st.session_state.open_scanner = False
+                st.session_state.trigger_popup_check = True
+
         left_box, right_box = st.columns([6, 6])
         
         with left_box:
@@ -643,39 +720,48 @@ else:
                     st.rerun()
                 
                 if st.session_state.open_scanner:
-                    render_scanner_with_raw_inject()
+                    render_auto_submit_qr_scanner()
 
-                # ช่องกรอกหมายเลขครุภัณฑ์ เพื่อค้นหา (รองรับข้อมูลดิบทั้งหมดจาก QR Code)
+                # ช่องแสดงเฉพาะหมายเลขครุภัณฑ์ (เชื่อมกับ on_change เพื่อทำงานอัตโนมัติทันทีที่สแกนเสร็จ)
                 scanned_code_input = st.text_input(
                     "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
                     key="scanned_asset_box",
-                    placeholder="สแกน QR Code หรือพิมพ์หมายเลข..."
+                    placeholder="สแกน QR Code หรือพิมพ์หมายเลข...",
+                    on_change=on_asset_input_change
                 )
                 
-                # ปุ่มค้นหามาตรฐานให้ผู้ใช้งานกดเอง
+                # ปุ่มค้นหาสำหรับกรณีพิมพ์เองแล้วคลิกปุ่ม
                 col_btn_mid, col_space_mid = st.columns([1.5, 2.5])
                 with col_btn_mid:
                     search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
 
-        active_search_val = scanned_code_input.strip() if scanned_code_input else ""
-
-        if search_triggered_mid and active_search_val:
-            st.session_state.active_search_query = active_search_val
+        if search_triggered_mid and scanned_code_input.strip():
+            raw_val = scanned_code_input.strip()
+            clean_code = raw_val.split("?scan=").pop().split("&")[0].strip() if "?scan=" in raw_val else raw_val
+            st.session_state.active_search_query = clean_code
+            st.session_state.open_scanner = False
+            st.session_state.trigger_popup_check = True
 
         current_query = st.session_state.get("active_search_query", "")
 
         if current_query:
-            kw = current_query
-            # รองรับทั้งกรอกรหัสตรงๆ หรือสแกนลิงก์ QR Code ที่มี ?scan=
-            search_term = kw.split("?scan=").pop().split("&")[0].strip() if "?scan=" in kw else kw
+            search_term = current_query.split("?scan=").pop().split("&")[0].strip() if "?scan=" in current_query else current_query
 
             matched_mob = valid_df[
-                valid_df[target_column].astype(str).str.strip().str.contains(search_term, case=False, na=False)
+                valid_df[target_column].astype(str).str.strip().str.contains(search_term, case=False, na=False, regex=False)
             ]
             if matched_mob.empty:
                 matched_mob = valid_df[
-                    valid_df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
+                    valid_df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False, regex=False)).any(axis=1)
                 ]
+
+            # แสดงป๊อบอัพ 1 วินาทีเมื่อเพิ่งสแกนหรือกดค้นหา
+            if st.session_state.get("trigger_popup_check", False):
+                st.session_state.trigger_popup_check = False
+                if not matched_mob.empty:
+                    show_1sec_popup("✅ ค้นพบข้อมูล", is_success=True)
+                else:
+                    show_1sec_popup("❌ ไม่พบข้อมูล/QR Code ไม่ถูกต้อง", is_success=False)
 
             if not matched_mob.empty:
                 st.success(f"🎯 พบข้อมูลครุภัณฑ์ที่ตรงกับรหัส/คำค้นหา: {len(matched_mob)} รายการ")
@@ -769,7 +855,7 @@ else:
                                 st.session_state.flash_success_msg = f"✅ บันทึกผลการตรวจครุภัณฑ์ {selected_fiscal_year} สำเร็จเรียบร้อย!"
                                 st.rerun()
             else:
-                st.warning("⚠️ ไม่พบหมายเลขครุภัณฑ์นี้ในระบบ กรุณาตรวจสอบความถูกต้องอีกครั้งครับ")
+                st.warning(f"⚠️ ไม่พบข้อมูลครุภัณฑ์รหัส '{search_term}' ในระบบ (QR Code อาจไม่ถูกต้องหรือเป็นข้อมูลจากแหล่งอื่น)")
 
     # =========================================================================
     # เมนูที่ 3: สร้าง QR Code
