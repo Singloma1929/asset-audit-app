@@ -426,7 +426,6 @@ def render_auto_submit_qr_scanner():
     """
     return components.html(scanner_html, height=340)
 
-# ตรวจสอบตัวแปรแจ้งเตือนการแก้ไขข้อมูลบน Cloud
 if "cloud_save_success_toast" in st.session_state:
     show_1sec_popup("✅ บันทึกข้อมูลขึ้น cloud แล้ว", is_success=True)
     del st.session_state.cloud_save_success_toast
@@ -623,26 +622,24 @@ else:
                         
                         for idx, col_name in enumerate(editable_cols):
                             with cols_ui[idx % 3]:
+                                # ดึงค่าปัจจุบันจากตาราง (ซึ่งรวมข้อมูลที่อัปเดตล่าสุดจาก Cloud แล้ว) มาแสดงในฟอร์ม
+                                current_val = str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
                                 updated_values[col_name] = st.text_input(
                                     col_name,
-                                    value=str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
+                                    value=current_val
                                 )
-                        
-                        current_note_val = str(target_row.get('หมายเหตุ', '-'))
-                        if current_note_val in ['nan', 'None']:
-                            current_note_val = '-'
-                        
-                        with cols_ui[(len(editable_cols)) % 3]:
-                            note_input_val = st.text_input("หมายเหตุ", value=current_note_val, key="edit_extra_note")
                         
                         save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
                         if save_edit_cloud:
-                            updated_values['หมายเหตุ_ข้อมูลหลัก'] = note_input_val
+                            # เก็บค่าหมายเหตุแยกต่างหากจากฟิลด์หลักเพื่อให้ซิงค์สมบูรณ์
+                            note_val = updated_values.get('หมายเหตุ', '-')
+                            updated_values['หมายเหตุ_ข้อมูลหลัก'] = note_val
+                            
                             ok = save_progress_to_supabase(
                                 asset_code=edit_target,
                                 condition=target_row['สภาพครุภัณฑ์'],
                                 status=target_row['สถานะการตรวจ'],
-                                note=note_input_val,
+                                note=note_val,
                                 inspector=target_row['ผู้ตรวจ'],
                                 timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
                                 fiscal_year=current_year_key,
@@ -664,9 +661,6 @@ else:
                         for idx, col_name in enumerate(editable_cols):
                             with cols_ui[idx % 3]:
                                 new_values[col_name] = st.text_input(col_name, value="-", key=f"new_col_{idx}")
-                        
-                        with cols_ui[(len(editable_cols)) % 3]:
-                            new_note_val = st.text_input("หมายเหตุ", value="-", key="new_extra_note")
 
                         save_new_cloud = st.form_submit_button("➕ เพิ่มรายการใหม่และบันทึกขึ้น Cloud", type="primary", use_container_width=True)
                         if save_new_cloud:
@@ -675,12 +669,13 @@ else:
                             elif str(new_code).strip() in df[target_column].astype(str).str.strip().values:
                                 st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว")
                             else:
-                                new_values['หมายเหตุ_ข้อมูลหลัก'] = new_note_val
+                                note_val = new_values.get('หมายเหตุ', '-')
+                                new_values['หมายเหตุ_ข้อมูลหลัก'] = note_val
                                 ok = save_progress_to_supabase(
                                     asset_code=new_code.strip(),
                                     condition="-",
                                     status="ยังไม่ตรวจ",
-                                    note=new_note_val,
+                                    note=note_val,
                                     inspector="-",
                                     timestamp="-",
                                     fiscal_year=current_year_key,
