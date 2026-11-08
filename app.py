@@ -264,7 +264,6 @@ def get_shared_data(fiscal_year_str):
                         df.loc[mask, 'ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
                         
-                        # นำหมายเหตุล่าสุดมาอัปเดตลงใน DataFrame เสมอ
                         if actual_note != '-' and actual_note != '':
                             df.loc[mask, 'หมายเหตุ'] = actual_note
                         elif extra_info and 'หมายเหตุ_ข้อมูลหลัก' in extra_info:
@@ -342,6 +341,19 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
         return True
     except Exception as e:
         st.error(f"⚠️ ไม่สามารถบันทึกลง Supabase ได้: {e}")
+        return False
+
+# ฟังก์ชันสำหรับลบรายการออกจาก Cloud
+def delete_asset_from_supabase(asset_code, fiscal_year):
+    if not supabase:
+        st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
+        return False
+    try:
+        clean_code = str(asset_code).strip()
+        supabase.table("core_assetauditrecord").delete().eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).execute()
+        return True
+    except Exception as e:
+        st.error(f"⚠️ ไม่สามารถลบข้อมูลจาก Supabase ได้: {e}")
         return False
 
 def render_status_badge(status_val, cond_val, inspector_val):
@@ -429,6 +441,10 @@ def render_auto_submit_qr_scanner():
 if "cloud_save_success_toast" in st.session_state:
     show_1sec_popup("✅ บันทึกข้อมูลขึ้น cloud แล้ว", is_success=True)
     del st.session_state.cloud_save_success_toast
+
+if "cloud_delete_success_toast" in st.session_state:
+    show_1sec_popup("🗑️ ลบข้อมูลออกจาก cloud แล้ว", is_success=True)
+    del st.session_state.cloud_delete_success_toast
 
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
@@ -604,11 +620,9 @@ else:
                     horizontal=True
                 )
                 
-                # ฟิลด์ผลการตรวจที่ไม่นำมาแสดงในฟอร์มแก้ไขข้อมูลหลัก (แต่ "หมายเหตุ" ต้องนำมาแสดงเสมอ)
                 non_editable_audit_cols = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
                 editable_cols = [c for c in df.columns if c not in non_editable_audit_cols and c != target_column]
                 
-                # ตรวจสอบให้มั่นใจว่าช่อง 'หมายเหตุ' มีอยู่ในฟอร์มแก้ไขเสมอ
                 if 'หมายเหตุ' not in editable_cols and 'หมายเหตุ' in df.columns:
                     editable_cols.append('หมายเหตุ')
 
@@ -627,7 +641,6 @@ else:
                         
                         for idx, col_name in enumerate(editable_cols):
                             with cols_ui[idx % 3]:
-                                # ดึงค่าปัจจุบันที่อัปเดตล่าสุดจาก Cloud มาแสดงในกล่องข้อความเสมอ
                                 current_val = str(target_row.get(col_name, '-'))
                                 if current_val in ['nan', 'None']:
                                     current_val = '-'
@@ -638,9 +651,13 @@ else:
                                     key=f"edit_field_{col_name}_{edit_target}"
                                 )
                         
-                        save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
+                        col_btn_save, col_btn_del = st.columns(2)
+                        with col_btn_save:
+                            save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
+                        with col_btn_del:
+                            delete_cloud_btn = st.form_submit_button("🗑️ ลบรายการนี้ออกจาก Cloud", type="secondary", use_container_width=True)
+
                         if save_edit_cloud:
-                            # ดึงค่าหมายเหตุจากช่องที่ผู้ใช้กรอกล่าสุด
                             note_val = updated_values.get('หมายเหตุ', '-')
                             if not note_val or note_val in ['nan', 'None']:
                                 note_val = '-'
@@ -659,6 +676,13 @@ else:
                             if ok:
                                 get_shared_data.clear()
                                 st.session_state.cloud_save_success_toast = True
+                                st.rerun()
+
+                        if delete_cloud_btn:
+                            ok = delete_asset_from_supabase(edit_target, current_year_key)
+                            if ok:
+                                get_shared_data.clear()
+                                st.session_state.cloud_delete_success_toast = True
                                 st.rerun()
 
                 else:
