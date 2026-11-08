@@ -892,27 +892,27 @@ else:
             base_url = "https://asset-audit-app-bbywyvjvpavzrkh8skqrmf.streamlit.app/"
             qr_payload = f"{base_url}?scan={selected_qr_item}"
             
-            # สร้าง QR Code แบบปรับขนาดให้คมชัด
-            qr = qrcode.QRCode(version=1, box_size=14, border=2)
+            # 📌 สร้าง QR Code ความละเอียดสูง
+            qr = qrcode.QRCode(version=2, box_size=16, border=3, error_correction=qrcode.constants.ERROR_CORRECT_M)
             qr.add_data(qr_payload)
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
             
             qr_width, qr_height = qr_img.size
             
-            # คำนวณพื้นที่ด้านล่างและขนาดฟอนต์ให้พอดีกับความกว้างของ QR Code
-            padding_bottom = 50  
+            # 📌 คำนวณพื้นที่ขยายด้านล่างให้สมดุลกับความกว้าง QR Code
+            padding_bottom = int(qr_height * 0.18)
             new_img = Image.new('RGB', (qr_width, qr_height + padding_bottom), 'white')
             new_img.paste(qr_img, (0, 0))
             
             draw = ImageDraw.Draw(new_img)
             text_to_print = str(selected_qr_item)
             
-            # พยายามโหลดฟอนต์ขนาดใหญ่เพื่อให้ตัวเลขใต้ QR Code เห็นชัดเจน
+            # 📌 บังคับขนาดฟอนต์ให้ใหญ่เกือบเต็มความกว้าง (ประมาณ 75-80% ของความกว้าง QR Code)
             font = None
-            font_size = int(qr_width / 11)  # ปรับขนาดตามสัดส่วนความกว้าง QR Code
+            font_size = int(qr_width / len(text_to_print) * 1.6)
             
-            for font_name in ["arial.ttf", "DejaVuSans.ttf", "Tahoma.ttf", "FreeSans.ttf"]:
+            for font_name in ["arial.ttf", "DejaVuSans.ttf", "Tahoma.ttf", "FreeSans.ttf", "Verdana.ttf"]:
                 try:
                     font = ImageFont.truetype(font_name, font_size)
                     break
@@ -922,15 +922,17 @@ else:
             if font is None:
                 font = ImageFont.load_default()
                 
-            # คำนวณความกว้างข้อความเพื่อจัดกึ่งกลางพอดี
+            # คำนวณพิกัดให้ตัวเลขอยู่กึ่งกลางพอดี
             try:
                 bbox = draw.textbbox((0, 0), text_to_print, font=font)
                 text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
             except Exception:
-                text_width = len(text_to_print) * (font_size / 2)
+                text_width = len(text_to_print) * (font_size * 0.6)
+                text_height = font_size
             
             text_x = (qr_width - text_width) / 2
-            text_y = qr_height + ((padding_bottom - font_size) / 2) - 2
+            text_y = qr_height + ((padding_bottom - text_height) / 2) - 4
             
             draw.text((text_x, text_y), text_to_print, fill="black", font=font)
             
@@ -938,7 +940,7 @@ else:
             new_img.save(buf, format="PNG")
             byte_im = buf.getvalue()
             
-            st.image(byte_im, caption=f"ป้าย QR Code: {selected_qr_item}", width=300)
+            st.image(byte_im, caption=f"ป้าย QR Code: {selected_qr_item}", width=320)
             st.download_button(
                 label=f"📥 ดาวน์โหลดรูปป้าย QR Code ({selected_qr_item})",
                 data=byte_im,
