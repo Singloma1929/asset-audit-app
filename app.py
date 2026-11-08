@@ -264,13 +264,14 @@ def get_shared_data(fiscal_year_str):
                         df.loc[mask, 'ผู้ตรวจ'] = str(row['inspector']) if pd.notna(row['inspector']) else '-'
                         df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
                         
-                        if actual_note != '-':
+                        # นำหมายเหตุล่าสุดมาอัปเดตลงใน DataFrame เสมอ
+                        if actual_note != '-' and actual_note != '':
                             df.loc[mask, 'หมายเหตุ'] = actual_note
                         elif extra_info and 'หมายเหตุ_ข้อมูลหลัก' in extra_info:
                             df.loc[mask, 'หมายเหตุ'] = extra_info['หมายเหตุ_ข้อมูลหลัก']
 
                         for col_k, val_v in extra_info.items():
-                            if col_k in df.columns:
+                            if col_k in df.columns and col_k != 'หมายเหตุ_ข้อมูลหลัก':
                                 df.loc[mask, col_k] = str(val_v)
                     else:
                         new_r = {c: '-' for c in df.columns}
@@ -282,7 +283,7 @@ def get_shared_data(fiscal_year_str):
                         new_r['วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row['updated_at']) if pd.notna(row['updated_at']) else '-'
                         
                         for col_k, val_v in extra_info.items():
-                            if col_k in df.columns:
+                            if col_k in df.columns and col_k != 'หมายเหตุ_ข้อมูลหลัก':
                                 new_r[col_k] = str(val_v)
                         new_cloud_rows.append(new_r)
                 
@@ -319,8 +320,7 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
 
         if extra_dict is not None:
             saved_extra.update(extra_dict)
-        elif 'หมายเหตุ_ข้อมูลหลัก' in saved_extra:
-            saved_extra['หมายเหตุ_ข้อมูลหลัก'] = clean_note
+        saved_extra['หมายเหตุ_ข้อมูลหลัก'] = clean_note
             
         final_note = f"{clean_note}||ASSET_DATA||{json.dumps(saved_extra, ensure_ascii=False)}" if saved_extra else clean_note
 
@@ -604,8 +604,13 @@ else:
                     horizontal=True
                 )
                 
-                audit_cols_set = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
-                editable_cols = [c for c in df.columns if c not in audit_cols_set and c != target_column]
+                # ฟิลด์ผลการตรวจที่ไม่นำมาแสดงในฟอร์มแก้ไขข้อมูลหลัก (แต่ "หมายเหตุ" ต้องนำมาแสดงเสมอ)
+                non_editable_audit_cols = {'สภาพครุภัณฑ์', 'สถานะการตรวจ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'}
+                editable_cols = [c for c in df.columns if c not in non_editable_audit_cols and c != target_column]
+                
+                # ตรวจสอบให้มั่นใจว่าช่อง 'หมายเหตุ' มีอยู่ในฟอร์มแก้ไขเสมอ
+                if 'หมายเหตุ' not in editable_cols and 'หมายเหตุ' in df.columns:
+                    editable_cols.append('หมายเหตุ')
 
                 if mode_select == "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม":
                     edit_target = st.selectbox(
@@ -622,17 +627,23 @@ else:
                         
                         for idx, col_name in enumerate(editable_cols):
                             with cols_ui[idx % 3]:
-                                # ดึงค่าปัจจุบันจากตาราง (ซึ่งรวมข้อมูลที่อัปเดตล่าสุดจาก Cloud แล้ว) มาแสดงในฟอร์ม
-                                current_val = str(target_row[col_name]) if str(target_row[col_name]) not in ['nan', 'None'] else '-'
+                                # ดึงค่าปัจจุบันที่อัปเดตล่าสุดจาก Cloud มาแสดงในกล่องข้อความเสมอ
+                                current_val = str(target_row.get(col_name, '-'))
+                                if current_val in ['nan', 'None']:
+                                    current_val = '-'
+                                    
                                 updated_values[col_name] = st.text_input(
                                     col_name,
-                                    value=current_val
+                                    value=current_val,
+                                    key=f"edit_field_{col_name}_{edit_target}"
                                 )
                         
                         save_edit_cloud = st.form_submit_button("☁️ บันทึกการแก้ไขข้อมูลนี้ขึ้น Cloud", type="primary", use_container_width=True)
                         if save_edit_cloud:
-                            # เก็บค่าหมายเหตุแยกต่างหากจากฟิลด์หลักเพื่อให้ซิงค์สมบูรณ์
+                            # ดึงค่าหมายเหตุจากช่องที่ผู้ใช้กรอกล่าสุด
                             note_val = updated_values.get('หมายเหตุ', '-')
+                            if not note_val or note_val in ['nan', 'None']:
+                                note_val = '-'
                             updated_values['หมายเหตุ_ข้อมูลหลัก'] = note_val
                             
                             ok = save_progress_to_supabase(
@@ -670,6 +681,8 @@ else:
                                 st.warning("⚠️ หมายเลขครุภัณฑ์นี้มีอยู่ในระบบแล้ว")
                             else:
                                 note_val = new_values.get('หมายเหตุ', '-')
+                                if not note_val or note_val in ['nan', 'None']:
+                                    note_val = '-'
                                 new_values['หมายเหตุ_ข้อมูลหลัก'] = note_val
                                 ok = save_progress_to_supabase(
                                     asset_code=new_code.strip(),
