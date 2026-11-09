@@ -47,6 +47,17 @@ st.markdown("""
         margin-top: 5px;
         margin-bottom: 10px;
     }
+    .agency-banner {
+        background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
     .stAlert {
         padding: 8px 14px !important;
         margin-bottom: 8px !important;
@@ -166,6 +177,73 @@ def show_1sec_popup(message, is_success=True):
 # หัวข้อโปรเจกต์
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Cloud Version)</div>", unsafe_allow_html=True)
 
+# --- 🏢 ระบบจัดการ Session และเลือกหน่วยงาน (Sidebar) ---
+if "current_agency" not in st.session_state:
+    st.session_state.current_agency = "default_agency"
+if "current_agency_name" not in st.session_state:
+    st.session_state.current_agency_name = "สำนักงานหลัก (ค่าเริ่มต้น)"
+
+def get_registered_agencies():
+    if not supabase:
+        return []
+    try:
+        res = supabase.table("agencies").select("*").execute()
+        return res.data if res.data else []
+    except Exception:
+        return []
+
+agencies_list = get_registered_agencies()
+
+with st.sidebar:
+    st.markdown("### 🏢 เข้าสู่ระบบหน่วยงาน")
+    agency_options = {"default_agency": "สำนักงานหลัก (Default)"}
+    for ag in agencies_list:
+        agency_options[ag['agency_code']] = ag['agency_name']
+    
+    selected_code = st.selectbox(
+        "เลือกหน่วยงานของคุณ", 
+        options=list(agency_options.keys()),
+        format_func=lambda x: agency_options[x]
+    )
+    
+    if st.button("🚀 เข้าใช้งานหน่วยงานนี้", type="primary", use_container_width=True):
+        st.session_state.current_agency = selected_code
+        st.session_state.current_agency_name = agency_options[selected_code]
+        st.success(f"เข้าสู่ระบบ {agency_options[selected_code]} สำเร็จ!")
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("### ➕ ลงทะเบียนหน่วยงานใหม่")
+    with st.form("register_agency_form"):
+        new_code = st.text_input("รหัสหน่วยงาน (ภาษาอังกฤษติดกัน เช่น office01)")
+        new_name = st.text_input("ชื่อหน่วยงานเต็ม")
+        new_email = st.text_input("อีเมลผู้ดูแล (Gmail)")
+        reg_btn = st.form_submit_button("ลงทะเบียนหน่วยงาน", use_container_width=True)
+        
+        if reg_btn:
+            if not new_code or not new_name or not new_email:
+                st.error("กรุณากรอกข้อมูลให้ครบถ้วน")
+            else:
+                try:
+                    supabase.table("agencies").insert({
+                        "agency_code": new_code.strip().lower(),
+                        "agency_name": new_name.strip(),
+                        "admin_email": new_email.strip()
+                    }).execute()
+                    st.success("ลงทะเบียนสำเร็จ! สามารถเลือกเข้าสู่ระบบได้เลย")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"รหัสหน่วยงานนี้อาจซ้ำกันแล้ว: {e}")
+
+# แสดงแบนเนอร์บอกหน่วยงานปัจจุบัน
+active_agency = st.session_state.current_agency
+st.markdown(f"""
+    <div class='agency-banner'>
+        <span>📌 กำลังปฏิบัติงานในนาม: <b>{st.session_state.current_agency_name}</b> (รหัส: {active_agency})</span>
+        <span style='font-size: 13px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 4px;'>Multi-Tenant SaaS Mode</span>
+    </div>
+""", unsafe_allow_html=True)
+
 # 🔽 ช่อง Dropdown เลือกปีงบประมาณ ชิดซ้ายมือ
 col_dropdown, col_space_drop = st.columns([2, 5])
 with col_dropdown:
@@ -180,7 +258,7 @@ st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 header_row = 4
 
 @st.cache_resource
-def get_shared_data(fiscal_year_str):
+def get_shared_data(fiscal_year_str, agency_id):
     if "2568" in fiscal_year_str:
         file_candidates = ["default_asset_2568.xlsx", "default_asset_2568.xls"]
         year_key = "2568"
@@ -238,7 +316,8 @@ def get_shared_data(fiscal_year_str):
 
     if supabase:
         try:
-            response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).execute()
+            # ดึงข้อมูลเฉพาะของหน่วยงานนี้ (agency_id)
+            response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).eq("agency_id", agency_id).execute()
             saved_data = response.data
             
             if saved_data:
@@ -294,13 +373,13 @@ def get_shared_data(fiscal_year_str):
 
     return df, target_col, year_key
 
-def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, fiscal_year, extra_dict=None):
+def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, fiscal_year, agency_id, extra_dict=None):
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return False
     try:
         clean_code = str(asset_code).strip()
-        existing = supabase.table("core_assetauditrecord").select("id, note").eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).execute()
+        existing = supabase.table("core_assetauditrecord").select("id, note").eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).eq("agency_id", agency_id).execute()
         
         saved_extra = {}
         record_id = None
@@ -330,7 +409,8 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
             "note": final_note,
             "inspector": inspector,
             "updated_at": timestamp,
-            "fiscal_year": fiscal_year
+            "fiscal_year": fiscal_year,
+            "agency_id": agency_id
         }
 
         if record_id:
@@ -344,13 +424,13 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
         return False
 
 # ฟังก์ชันสำหรับลบรายการออกจาก Cloud
-def delete_asset_from_supabase(asset_code, fiscal_year):
+def delete_asset_from_supabase(asset_code, fiscal_year, agency_id):
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
         return False
     try:
         clean_code = str(asset_code).strip()
-        supabase.table("core_assetauditrecord").delete().eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).execute()
+        supabase.table("core_assetauditrecord").delete().eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).eq("agency_id", agency_id).execute()
         return True
     except Exception as e:
         st.error(f"⚠️ ไม่สามารถลบข้อมูลจาก Supabase ได้: {e}")
@@ -463,7 +543,7 @@ if scanned_param:
     st.session_state.nav_menu_radio = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
     st.query_params.clear()
 
-df, target_column, current_year_key = get_shared_data(selected_fiscal_year)
+df, target_column, current_year_key = get_shared_data(selected_fiscal_year, active_agency)
 
 if df is None:
     st.error(f"⚠️ ไม่พบไฟล์ข้อมูลของ **{selected_fiscal_year}** บนระบบ โปรดตรวจสอบชื่อไฟล์ Excel บน GitHub อีกครั้งครับ")
@@ -602,7 +682,7 @@ else:
             st.download_button(
                 label="📥 ดาวน์โหลดรายการที่แสดงนี้ (Excel)",
                 data=filtered_data,
-                file_name=f"รายงานครุภัณฑ์_{selected_fiscal_year}_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
+                file_name=f"รายงานครุภัณฑ์_{active_agency}_{selected_fiscal_year}_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
@@ -671,6 +751,7 @@ else:
                                 inspector=target_row['ผู้ตรวจ'],
                                 timestamp=target_row['วันเดือนปี เวลา ที่ทำการตรวจสอบ'],
                                 fiscal_year=current_year_key,
+                                agency_id=active_agency,
                                 extra_dict=updated_values
                             )
                             if ok:
@@ -679,7 +760,7 @@ else:
                                 st.rerun()
 
                         if delete_cloud_btn:
-                            ok = delete_asset_from_supabase(edit_target, current_year_key)
+                            ok = delete_asset_from_supabase(edit_target, current_year_key, active_agency)
                             if ok:
                                 get_shared_data.clear()
                                 st.session_state.cloud_delete_success_toast = True
@@ -716,6 +797,7 @@ else:
                                     inspector="-",
                                     timestamp="-",
                                     fiscal_year=current_year_key,
+                                    agency_id=active_agency,
                                     extra_dict=new_values
                                 )
                                 if ok:
@@ -875,7 +957,8 @@ else:
                                 note=m_note_val,
                                 inspector=m_inspector_val,
                                 timestamp=m_time_val,
-                                fiscal_year=current_year_key
+                                fiscal_year=current_year_key,
+                                agency_id=active_agency
                             )
                             if ok:
                                 get_shared_data.clear()
@@ -946,6 +1029,6 @@ else:
         st.download_button(
             label=f"📊 ดาวน์โหลดรายงาน Excel ของ {selected_fiscal_year}",
             data=output_data,
-            file_name=f"รายงานผลการตรวจครุภัณฑ์_{selected_fiscal_year}_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
+            file_name=f"รายงานผลการตรวจครุภัณฑ์_{active_agency}_{selected_fiscal_year}_{thai_now.strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
