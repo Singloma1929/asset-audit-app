@@ -29,7 +29,7 @@ supabase: Client = init_supabase()
 
 # ตั้งค่าหน้าเว็บให้เป็นแบบ Wide
 st.set_page_config(
-    page_title="ระบบตรวจครุภัณฑ์",
+    page_title="ระบบตรวจครุภัณฑ์ (Secure Cloud)",
     page_icon="🏛️",
     layout="wide"
 )
@@ -174,14 +174,13 @@ def show_1sec_popup(message, is_success=True):
     cls = "popup-success" if is_success else "popup-error"
     st.markdown(f"<div class='auto-popup-badge {cls}'>{message}</div>", unsafe_allow_html=True)
 
-# หัวข้อโปรเจกต์
-st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Cloud Version)</div>", unsafe_allow_html=True)
-
-# --- 🏢 ระบบจัดการ Session และเลือกหน่วยงาน (Sidebar) ---
+# --- 🔐 ระบบ Session และ Login ---
+if "is_logged_in" not in st.session_state:
+    st.session_state.is_logged_in = False
 if "current_agency" not in st.session_state:
-    st.session_state.current_agency = "default_agency"
+    st.session_state.current_agency = ""
 if "current_agency_name" not in st.session_state:
-    st.session_state.current_agency_name = "สำนักงานหลัก (ค่าเริ่มต้น)"
+    st.session_state.current_agency_name = ""
 
 def get_registered_agencies():
     if not supabase:
@@ -192,55 +191,92 @@ def get_registered_agencies():
     except Exception:
         return []
 
-agencies_list = get_registered_agencies()
+# --- 🛡️ หน้าจอล็อกอิน (บังคับใส่ User & Password ก่อนเข้าดูเว็บ) ---
+if not st.session_state.is_logged_in:
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+    
+    with col_l2:
+        st.markdown("<div style='text-align: center;'><h2 style='color: #1e3a8a;'>🏛️ เข้าสู่ระบบตรวจครุภัณฑ์</h2><p style='color: #64748b;'>โปรดใส่รหัสหน่วยงานและรหัสผ่านเพื่อเข้าใช้งาน</p></div>", unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            with st.form("login_form"):
+                login_code = st.text_input("👤 รหัสหน่วยงาน (Username เช่น default_agency หรือ office01)")
+                login_pass = st.text_input("🔑 รหัสผ่าน (Password)", type="password")
+                submit_login = st.form_submit_button("🚀 เข้าสู่ระบบ", type="primary", use_container_width=True)
+                
+                if submit_login:
+                    if not login_code or not login_pass:
+                        st.error("⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน")
+                    else:
+                        agencies = get_registered_agencies()
+                        matched_agency = None
+                        for ag in agencies:
+                            if ag['agency_code'].strip().lower() == login_code.strip().lower():
+                                matched_agency = ag
+                                break
+                        
+                        if matched_agency:
+                            stored_pass = str(matched_agency.get('password', '123456')).strip()
+                            if stored_pass == login_pass.strip():
+                                st.session_state.is_logged_in = True
+                                st.session_state.current_agency = matched_agency['agency_code']
+                                st.session_state.current_agency_name = matched_agency['agency_name']
+                                st.success(f"เข้าสู่ระบบ {matched_agency['agency_name']} สำเร็จ!")
+                                st.rerun()
+                            else:
+                                st.error("❌ รหัสผ่านไม่ถูกต้อง โปรดลองใหม่อีกครั้ง")
+                        else:
+                            st.error("❌ ไม่พบรหัสหน่วยงานนี้ในระบบ")
+
+        st.markdown("<hr style='margin: 20px 0px;'>", unsafe_allow_html=True)
+        with st.expander("➕ ยังไม่มีหน่วยงาน? คลิกที่นี่เพื่อลงทะเบียนใหม่"):
+            with st.form("register_agency_form_public"):
+                new_code = st.text_input("รหัสหน่วยงาน (ภาษาอังกฤษติดกัน เช่น school01)")
+                new_name = st.text_input("ชื่อหน่วยงานเต็ม")
+                new_email = st.text_input("อีเมลผู้ดูแล (Gmail)")
+                new_pass = st.text_input("กำหนดรหัสผ่าน (Password)", type="password")
+                reg_btn = st.form_submit_button("ลงทะเบียนหน่วยงาน", use_container_width=True)
+                
+                if reg_btn:
+                    if not new_code or not new_name or not new_email or not new_pass:
+                        st.error("กรุณากรอกข้อมูลให้ครบทุกช่อง")
+                    else:
+                        try:
+                            supabase.table("agencies").insert({
+                                "agency_code": new_code.strip().lower(),
+                                "agency_name": new_name.strip(),
+                                "admin_email": new_email.strip(),
+                                "password": new_pass.strip()
+                            }).execute()
+                            st.success("🎉 ลงทะเบียนสำเร็จ! สามารถนำรหัสและรหัสผ่านไปล็อกอินเข้าสู่ระบบได้ทันที")
+                        except Exception as e:
+                            st.error(f"⚠️ รหัสหน่วยงานนี้อาจซ้ำกันแล้ว หรือเกิดข้อผิดพลาด: {e}")
+
+    st.stop()
+
+# ==========================================
+# 🟢 ส่วนของโปรแกรมหลัก (ทำงานหลัง Login สำเร็จ)
+# ==========================================
+active_agency = st.session_state.current_agency
 
 with st.sidebar:
-    st.markdown("### 🏢 เข้าสู่ระบบหน่วยงาน")
-    agency_options = {"default_agency": "สำนักงานหลัก (Default)"}
-    for ag in agencies_list:
-        agency_options[ag['agency_code']] = ag['agency_name']
+    st.markdown(f"### 👤 ข้อมูลผู้ใช้งาน")
+    st.info(f"**หน่วยงาน:** {st.session_state.current_agency_name}\n\n**รหัส:** `{active_agency}`")
     
-    selected_code = st.selectbox(
-        "เลือกหน่วยงานของคุณ", 
-        options=list(agency_options.keys()),
-        format_func=lambda x: agency_options[x]
-    )
-    
-    if st.button("🚀 เข้าใช้งานหน่วยงานนี้", type="primary", use_container_width=True):
-        st.session_state.current_agency = selected_code
-        st.session_state.current_agency_name = agency_options[selected_code]
-        st.success(f"เข้าสู่ระบบ {agency_options[selected_code]} สำเร็จ!")
+    if st.button("🚪 ออกจากระบบ (Logout)", type="secondary", use_container_width=True):
+        st.session_state.is_logged_in = False
+        st.session_state.current_agency = ""
+        st.session_state.current_agency_name = ""
         st.rerun()
 
-    st.markdown("---")
-    st.markdown("### ➕ ลงทะเบียนหน่วยงานใหม่")
-    with st.form("register_agency_form"):
-        new_code = st.text_input("รหัสหน่วยงาน (ภาษาอังกฤษติดกัน เช่น office01)")
-        new_name = st.text_input("ชื่อหน่วยงานเต็ม")
-        new_email = st.text_input("อีเมลผู้ดูแล (Gmail)")
-        reg_btn = st.form_submit_button("ลงทะเบียนหน่วยงาน", use_container_width=True)
-        
-        if reg_btn:
-            if not new_code or not new_name or not new_email:
-                st.error("กรุณากรอกข้อมูลให้ครบถ้วน")
-            else:
-                try:
-                    supabase.table("agencies").insert({
-                        "agency_code": new_code.strip().lower(),
-                        "agency_name": new_name.strip(),
-                        "admin_email": new_email.strip()
-                    }).execute()
-                    st.success("ลงทะเบียนสำเร็จ! สามารถเลือกเข้าสู่ระบบได้เลย")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"รหัสหน่วยงานนี้อาจซ้ำกันแล้ว: {e}")
+# หัวข้อโปรเจกต์
+st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Secure Cloud Version)</div>", unsafe_allow_html=True)
 
-# แสดงแบนเนอร์บอกหน่วยงานปัจจุบัน
-active_agency = st.session_state.current_agency
 st.markdown(f"""
     <div class='agency-banner'>
         <span>📌 กำลังปฏิบัติงานในนาม: <b>{st.session_state.current_agency_name}</b> (รหัส: {active_agency})</span>
-        <span style='font-size: 13px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 4px;'>Multi-Tenant SaaS Mode</span>
+        <span style='font-size: 13px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 4px;'>Secure Tenant Mode</span>
     </div>
 """, unsafe_allow_html=True)
 
@@ -316,7 +352,6 @@ def get_shared_data(fiscal_year_str, agency_id):
 
     if supabase:
         try:
-            # ดึงข้อมูลเฉพาะของหน่วยงานนี้ (agency_id)
             response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).eq("agency_id", agency_id).execute()
             saved_data = response.data
             
