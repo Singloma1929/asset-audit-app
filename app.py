@@ -202,10 +202,10 @@ if not st.session_state.is_logged_in:
                     code_in = login_code.strip().lower()
                     pass_in = login_pass.strip()
 
-                    if code_in == "default_agency" and pass_in == "admin1234":
+                    if code_in == "cgduthai" and pass_in == "admin1234":
                         st.session_state.is_logged_in = True
-                        st.session_state.current_agency = "default_agency"
-                        st.session_state.current_agency_name = "สำนักงานหลัก (Default)"
+                        st.session_state.current_agency = "cgduthai"
+                        st.session_state.current_agency_name = "สำนักงานคลังจังหวัดอุทัยธานี"
                         st.rerun()
                     elif not code_in or not pass_in:
                         st.error("⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน")
