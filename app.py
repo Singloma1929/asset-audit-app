@@ -256,13 +256,67 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-col_dropdown, col_space_drop = st.columns([2, 5])
-with col_dropdown:
+# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
+col_year_top, col_upload_top = st.columns([2.5, 4.5])
+
+with col_year_top:
     selected_fiscal_year = st.selectbox(
         "📅 เลือกปีงบประมาณ",
         options=["ปีงบฯ 2570 (ปัจจุบัน)", "ปีงบฯ 2569", "ปีงบฯ 2568"],
         key="global_fiscal_year_select"
     )
+
+year_key = "2570"
+if "2568" in selected_fiscal_year:
+    year_key = "2568"
+elif "2569" in selected_fiscal_year:
+    year_key = "2569"
+
+with col_upload_top:
+    st.write("")  # เว้นระยะให้ปุ่มเสมอกับกล่อง dropdown
+    with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
+        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}** ({selected_fiscal_year})")
+        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ข้อมูลจะถูกจัดเก็บแยกเฉพาะหน่วยงานของคุณอย่างปลอดภัย")
+        
+        top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
+        if top_excel_upload:
+            try:
+                try:
+                    p_df = pd.read_excel(top_excel_upload, header=header_row)
+                except Exception:
+                    p_df = pd.read_excel(top_excel_upload)
+
+                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
+                m_code_col = code_cols[0] if code_cols else p_df.columns[0]
+                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** ({len(p_df)} รายการ)")
+
+                if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
+                    upload_rows = []
+                    for _, r in p_df.iterrows():
+                        c_val = str(r[m_code_col]).strip()
+                        if not c_val or c_val in ['nan', 'None', '-']:
+                            continue
+                        r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
+                        upload_rows.append({
+                            "agency_id": active_agency,
+                            "fiscal_year": year_key,
+                            "asset_code": c_val,
+                            "row_data": r_data
+                        })
+
+                    if upload_rows and supabase:
+                        batch_size = 200
+                        for i in range(0, len(upload_rows), batch_size):
+                            supabase.table("agency_assets").upsert(
+                                upload_rows[i:i + batch_size],
+                                on_conflict="agency_id,fiscal_year,asset_code"
+                            ).execute()
+
+                        get_shared_data.clear()
+                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์สำเร็จ {len(upload_rows)} รายการ")
+                        st.rerun()
+            except Exception as ex:
+                st.error(f"เกิดข้อผิดพลาด: {ex}")
 
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
