@@ -256,92 +256,6 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
-col_year_top, col_upload_top = st.columns([2.5, 4.5])
-
-with col_year_top:
-    selected_fiscal_year = st.selectbox(
-        "📅 เลือกปีงบประมาณ",
-        options=["ปีงบฯ 2570 (ปัจจุบัน)", "ปีงบฯ 2569", "ปีงบฯ 2568"],
-        key="global_fiscal_year_select"
-    )
-
-year_key = "2570"
-if "2568" in selected_fiscal_year:
-    year_key = "2568"
-elif "2569" in selected_fiscal_year:
-    year_key = "2569"
-
-with col_upload_top:
-    st.write("")  # เว้นระยะให้ปุ่มเสมอกับกล่อง dropdown
-    with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
-        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}** ({selected_fiscal_year})")
-        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ข้อมูลจะถูกจัดเก็บแยกเฉพาะหน่วยงานของคุณอย่างปลอดภัย")
-        
-        top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
-        if top_excel_upload:
-            try:
-                # 1. อ่านไฟล์แบบดิบเพื่อสแกนหาแถวหัวตารางจริง
-                raw_excel = pd.read_excel(top_excel_upload, header=None)
-                
-                header_idx = None
-                for idx in range(min(15, len(raw_excel))):
-                    row_vals = [str(v).strip() for v in raw_excel.iloc[idx].values if pd.notna(v)]
-                    # หาแถวที่มีคำว่า หมายเลขครุภัณฑ์ หรือ รหัส
-                    if any(any(k in val for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์']) for val in row_vals):
-                        header_idx = idx
-                        break
-                    elif any('รายการ' in val for val in row_vals) and any('รหัส' in val or 'เลข' in val for val in row_vals):
-                        header_idx = idx
-                        break
-                
-                # หากหาไม่เจอให้ใช้ค่าเริ่มต้นแถวที่ 4
-                if header_idx is None:
-                    header_idx = header_row if len(raw_excel) > header_row else 0
-                
-                p_df = raw_excel.iloc[header_idx + 1:].copy().reset_index(drop=True)
-                p_df.columns = [str(c).strip() for c in raw_excel.iloc[header_idx].values]
-                p_df = p_df.dropna(how='all').reset_index(drop=True)
-
-                # ค้นหาคอลัมน์รหัสครุภัณฑ์ที่แท้จริง
-                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์', 'รหัส', 'เลข'])]
-                m_code_col = code_cols[0] if code_cols else p_df.columns[0]
-                
-                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** (ตรวจพบ {len(p_df)} รายการ)")
-
-                if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
-                    upload_rows = []
-                    for _, r in p_df.iterrows():
-                        c_val = str(r[m_code_col]).strip()
-                        # กรองเอาเฉพาะแถวที่มีตัวเลขรหัสจริง
-                        if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
-                            continue
-                        r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
-                        upload_rows.append({
-                            "agency_id": active_agency,
-                            "fiscal_year": year_key,
-                            "asset_code": c_val,
-                            "row_data": r_data
-                        })
-
-                    if upload_rows and supabase:
-                        batch_size = 200
-                        for i in range(0, len(upload_rows), batch_size):
-                            supabase.table("agency_assets").upsert(
-                                upload_rows[i:i + batch_size],
-                                on_conflict="agency_id,fiscal_year,asset_code"
-                            ).execute()
-
-                        get_shared_data.clear()
-                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์สำเร็จ {len(upload_rows)} รายการ")
-                        st.rerun()
-                    else:
-                        st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
-            except Exception as ex:
-                st.error(f"เกิดข้อผิดพลาด: {ex}")
-
-st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
-
 header_row = 4
 
 # --- 🔄 ฟังก์ชันประมวลผลโครงสร้างไฟล์ Excel ท้องถิ่น ---
@@ -418,7 +332,7 @@ def get_shared_data(fiscal_year_str, agency_id):
         else:
             df = pd.DataFrame(columns=default_columns)
 
-    # จัดเตรียมคอลัมน์มาตรฐานการตรวจ ป้องกัน KeyError 100%
+    # จัดเตรียมคอลัมน์มาตรฐานการตรวจ ป้องกัน KeyError
     audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
     for col in audit_cols:
         if col not in df.columns:
@@ -460,6 +374,90 @@ def get_shared_data(fiscal_year_str, agency_id):
 
     return df, target_col, year_key
 
+# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
+col_year_top, col_upload_top = st.columns([2.5, 4.5])
+
+with col_year_top:
+    selected_fiscal_year = st.selectbox(
+        "📅 เลือกปีงบประมาณ",
+        options=["ปีงบฯ 2570 (ปัจจุบัน)", "ปีงบฯ 2569", "ปีงบฯ 2568"],
+        key="global_fiscal_year_select"
+    )
+
+year_key = "2570"
+if "2568" in selected_fiscal_year:
+    year_key = "2568"
+elif "2569" in selected_fiscal_year:
+    year_key = "2569"
+
+with col_upload_top:
+    st.write("")
+    with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
+        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}** ({selected_fiscal_year})")
+        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ข้อมูลจะถูกจัดเก็บแยกเฉพาะหน่วยงานของคุณอย่างปลอดภัย")
+        
+        top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
+        if top_excel_upload:
+            try:
+                raw_excel = pd.read_excel(top_excel_upload, header=None)
+                
+                header_idx = None
+                for idx in range(min(15, len(raw_excel))):
+                    row_vals = [str(v).strip() for v in raw_excel.iloc[idx].values if pd.notna(v)]
+                    if any(any(k in val for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์']) for val in row_vals):
+                        header_idx = idx
+                        break
+                    elif any('รายการ' in val for val in row_vals) and any('รหัส' in val or 'เลข' in val for val in row_vals):
+                        header_idx = idx
+                        break
+                
+                if header_idx is None:
+                    header_idx = header_row if len(raw_excel) > header_row else 0
+                
+                p_df = raw_excel.iloc[header_idx + 1:].copy().reset_index(drop=True)
+                p_df.columns = [str(c).strip() for c in raw_excel.iloc[header_idx].values]
+                p_df = p_df.dropna(how='all').reset_index(drop=True)
+
+                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์', 'รหัส', 'เลข'])]
+                m_code_col = code_cols[0] if code_cols else p_df.columns[0]
+                
+                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** (ตรวจพบ {len(p_df)} รายการ)")
+
+                if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
+                    # ใช้ Dictionary เพื่อตัดรหัสครุภัณฑ์ซ้ำ ป้องกัน Error 21000
+                    upload_dict = {}
+                    for _, r in p_df.iterrows():
+                        c_val = str(r[m_code_col]).strip()
+                        if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
+                            continue
+                        r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
+                        upload_dict[c_val] = {
+                            "agency_id": active_agency,
+                            "fiscal_year": year_key,
+                            "asset_code": c_val,
+                            "row_data": r_data
+                        }
+
+                    upload_rows = list(upload_dict.values())
+
+                    if upload_rows and supabase:
+                        batch_size = 150
+                        for i in range(0, len(upload_rows), batch_size):
+                            supabase.table("agency_assets").upsert(
+                                upload_rows[i:i + batch_size],
+                                on_conflict="agency_id,fiscal_year,asset_code"
+                            ).execute()
+
+                        get_shared_data.clear()
+                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์สำเร็จ {len(upload_rows)} รายการ")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
+            except Exception as ex:
+                st.error(f"เกิดข้อผิดพลาด: {ex}")
+
+st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
+
 def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, fiscal_year, agency_id, extra_dict=None):
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
@@ -490,31 +488,12 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
         st.error(f"⚠️ ไม่สามารถบันทึกลง Supabase ได้: {e}")
         return False
 
-def delete_asset_from_supabase(asset_code, fiscal_year, agency_id):
-    if not supabase:
-        st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
-        return False
-    try:
-        clean_code = str(asset_code).strip()
-        supabase.table("core_assetauditrecord").delete().eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).eq("agency_id", agency_id).execute()
-        return True
-    except Exception as e:
-        st.error(f"⚠️ ไม่สามารถลบข้อมูลจาก Supabase ได้: {e}")
-        return False
-
 def render_status_badge(status_val, cond_val, inspector_val):
     if status_val == 'ตรวจแล้ว':
         detail = f" (สภาพ: {cond_val} | ผู้ตรวจ: {inspector_val})" if cond_val != '-' else ""
         st.markdown(f"<div class='status-box-green'>✅ ผ่านการตรวจแล้ว{detail}</div>", unsafe_allow_html=True)
     else:
         st.markdown("<div class='status-box-red'>❌ ยังไม่ได้ตรวจ</div>", unsafe_allow_html=True)
-
-def render_save_status_badge(status_val, timestamp_val):
-    if status_val == 'ตรวจแล้ว':
-        time_info = f" (เมื่อ: {timestamp_val})" if timestamp_val and timestamp_val != '-' else ""
-        st.markdown(f"<div class='status-box-green'>✅ รายการนี้ได้บันทึกแล้ว{time_info}</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_auto_submit_qr_scanner():
     scanner_html = """
@@ -582,14 +561,6 @@ def render_auto_submit_qr_scanner():
     """
     return components.html(scanner_html, height=340)
 
-if "cloud_save_success_toast" in st.session_state:
-    show_1sec_popup("✅ บันทึกข้อมูลขึ้น cloud แล้ว", is_success=True)
-    del st.session_state.cloud_save_success_toast
-
-if "cloud_delete_success_toast" in st.session_state:
-    show_1sec_popup("🗑️ ลบข้อมูลออกจาก cloud แล้ว", is_success=True)
-    del st.session_state.cloud_delete_success_toast
-
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
     st.success(st.session_state.flash_success_msg)
@@ -604,13 +575,12 @@ if scanned_param:
     st.session_state.active_search_query = clean_scan
     st.session_state.open_scanner = False
     st.session_state.trigger_popup_check = True
-    st.session_state.nav_menu_radio = "📝 ตรวจครุภัณฑ์/บันทึกผลการตรวจ/แก้ไขผลการตรวจ"
+    st.session_state.nav_menu_radio = "📝 ตรวจครุภัณฑ์/บันทึกผล"
     st.query_params.clear()
 
 # โหลดข้อมูล
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year, active_agency)
 
-# 🛡️ เสริมเกราะป้องกัน KeyError: ตรวจสอบว่าต้องมีคอลัมน์ระบบครบถ้วนเสมอ
 required_system_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
 for c in required_system_cols:
     if c not in df.columns:
@@ -631,7 +601,6 @@ valid_mask = df[target_column].apply(is_valid_asset_code) if target_column in df
 valid_df = df[valid_mask]
 total_items = len(valid_df)
 
-# นับจำนวนแยกตามสถานะและสภาพอย่างปลอดภัย
 if not valid_df.empty and 'สถานะการตรวจ' in valid_df.columns:
     checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
     unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
@@ -669,9 +638,8 @@ m4.metric("✅ สภาพปกติ", normal_count)
 m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
 m6.metric("📦 หมดความจำเป็น", obsolete_count)
 
-# แจ้งเตือนทันทีเมื่อยังไม่มีครุภัณฑ์ในระบบ
 if total_items == 0:
-    st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณาคลิกเลือกแท็บเมนู **'📤 อัปโหลดทะเบียนครุภัณฑ์ (Excel)'** ด้านล่าง เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นของหน่วยงานครับ")
+    st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์'** ด้านบน เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นครับ")
 
 condition_options = [
     "ปกติ", "ชำรุด/เสียหาย", "หมดความจำเป็น", "ให้ยืม/ยืมมา",
@@ -885,55 +853,3 @@ elif selected_menu == m4_name:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary"
     )
-
-# ================= MENU 5: อัปโหลดไฟล์ Excel ของหน่วยงาน =================
-elif selected_menu == m5_name:
-    st.subheader(f"📤 อัปโหลดทะเบียนครุภัณฑ์สำหรับ: {st.session_state.current_agency_name}")
-    st.info("นำเข้าไฟล์ Excel (.xlsx, .xls) ทะเบียนครุภัณฑ์ตั้งต้นของหน่วยงานคุณ ข้อมูลจะถูกแยกเก็บอย่างปลอดภัยและใช้งานเฉพาะในหน่วยงานของคุณเท่านั้น")
-
-    excel_upload = st.file_uploader("เลือกไฟล์ Excel บัญชีครุภัณฑ์", type=["xlsx", "xls"])
-    if excel_upload:
-        try:
-            try:
-                preview_df = pd.read_excel(excel_upload, header=header_row)
-            except Exception:
-                preview_df = pd.read_excel(excel_upload)
-
-            st.write("👀 ตัวอย่างข้อมูลที่อ่านได้ (5 แถวแรก):")
-            st.dataframe(preview_df.head(), use_container_width=True)
-
-            code_cols = [c for c in preview_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
-            matched_code_col = code_cols[0] if code_cols else preview_df.columns[0]
-            st.success(f"🎯 พบคอลัมน์รหัสครุภัณฑ์อัตโนมัติ: **'{matched_code_col}'**")
-
-            if st.button("🚀 บันทึกครุภัณฑ์ทั้งหมดขึ้น Cloud ประจำหน่วยงาน", type="primary", use_container_width=True):
-                rows_payload = []
-                for _, row in preview_df.iterrows():
-                    asset_c = str(row[matched_code_col]).strip()
-                    if not asset_c or asset_c in ['nan', 'None', '-']:
-                        continue
-                    row_dict = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in row.items()}
-                    rows_payload.append({
-                        "agency_id": active_agency,
-                        "fiscal_year": current_year_key,
-                        "asset_code": asset_c,
-                        "row_data": row_dict
-                    })
-
-                if rows_payload and supabase:
-                    # ทยอย upsert ทีละ 200 แถวเพื่อความเสถียร
-                    batch_size = 200
-                    for i in range(0, len(rows_payload), batch_size):
-                        batch = rows_payload[i:i + batch_size]
-                        supabase.table("agency_assets").upsert(
-                            batch,
-                            on_conflict="agency_id,fiscal_year,asset_code"
-                        ).execute()
-
-                    get_shared_data.clear()
-                    show_1sec_popup(f"✅ บันทึกครุภัณฑ์สำเร็จ {len(rows_payload)} รายการ")
-                    st.rerun()
-                else:
-                    st.error("ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
-        except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการประมวลผลไฟล์: {e}")
