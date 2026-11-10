@@ -189,6 +189,7 @@ if not st.session_state.is_logged_in:
                         st.session_state.is_logged_in = True
                         st.session_state.current_agency = "cgduthai"
                         st.session_state.current_agency_name = "สำนักงานคลังจังหวัดอุทัยธานี"
+                        st.session_state.current_password = "admin1234"
                         st.rerun()
                     elif not code_in or not pass_in:
                         st.error("⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน")
@@ -202,6 +203,7 @@ if not st.session_state.is_logged_in:
                                         st.session_state.is_logged_in = True
                                         st.session_state.current_agency = matched["agency_code"]
                                         st.session_state.current_agency_name = matched["agency_name"]
+                                        st.session_state.current_password = pass_in
                                         st.rerun()
                                     else:
                                         st.error("❌ รหัสผ่านไม่ถูกต้อง")
@@ -245,6 +247,7 @@ with st.sidebar:
         st.session_state.is_logged_in = False
         st.session_state.current_agency = ""
         st.session_state.current_agency_name = ""
+        st.session_state.current_password = ""
         st.rerun()
 
 st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Secure Cloud Version)</div>", unsafe_allow_html=True)
@@ -297,7 +300,6 @@ def get_agency_years(agency_id):
 
 available_years = get_agency_years(active_agency)
 
-# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel
 col_year_top, col_upload_top = st.columns([2.5, 4.5])
 
 with col_year_top:
@@ -309,7 +311,6 @@ with col_year_top:
     year_key = selected_fiscal_year
 
 with col_upload_top:
-    # 🎯 ใช้ CSS ดันกล่อง Pop-over ให้ลงมาขนานกับช่อง Selectbox ได้พอดี
     st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
     with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
         st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}**")
@@ -378,6 +379,26 @@ with col_upload_top:
                         st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
             except Exception as ex:
                 st.error(f"เกิดข้อผิดพลาด: {ex}")
+        
+        st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+        st.markdown("🧨 **พื้นที่อันตราย (ล้างข้อมูล)**")
+        st.caption(f"หากอัปโหลดไฟล์ผิด สามารถกดลบข้อมูลของปี **{year_key}** ทิ้งเพื่ออัปโหลดใหม่ได้")
+        
+        confirm_pass = st.text_input(f"กรอกรหัสผ่านเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
+        
+        if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {year_key} ทิ้งทั้งหมด", type="secondary", use_container_width=True):
+            if confirm_pass == st.session_state.current_password:
+                if year_key != "รอการอัปโหลดไฟล์":
+                    supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
+                    supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
+                    
+                    get_agency_years.clear()
+                    get_shared_data.clear()
+                    st.rerun()
+            elif confirm_pass != "":
+                st.error("❌ รหัสผ่านไม่ถูกต้อง ไม่สามารถลบข้อมูลได้")
+            else:
+                st.warning("⚠️ กรุณากรอกรหัสผ่านก่อนกดยืนยันการลบ")
 
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
