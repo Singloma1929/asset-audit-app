@@ -658,14 +658,12 @@ condition_options = [
 
 st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
-# เมนูหลัก (เพิ่มแท็บอัปโหลด Excel)
 m1_name = "🔍 ค้นหา/แก้ไขข้อมูล"
 m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผล"
 m3_name = "🏷️ สร้าง QR Code"
 m4_name = "📥 ส่งออกรายงาน Excel"
-m5_name = "📤 อัปโหลดทะเบียนครุภัณฑ์ (Excel)"
 
-menu_options = [m1_name, m2_name, m3_name, m4_name, m5_name]
+menu_options = [m1_name, m2_name, m3_name, m4_name]
 
 selected_menu = st.radio(
     "เลือกเมนูการทำงาน:",
