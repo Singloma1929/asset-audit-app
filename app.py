@@ -160,7 +160,7 @@ def show_1sec_popup(message, is_success=True):
     cls = "popup-success" if is_success else "popup-error"
     st.markdown(f"<div class='auto-popup-badge {cls}'>{message}</div>", unsafe_allow_html=True)
 
-# --- 🔐 จัดการระบบ Login ---
+# --- 🔐 ระบบ Login & จัดการสิทธิ์หน่วยงาน ---
 if "is_logged_in" not in st.session_state:
     st.session_state.is_logged_in = False
 if "current_agency" not in st.session_state:
@@ -177,7 +177,7 @@ if not st.session_state.is_logged_in:
 
         with st.container(border=True):
             with st.form("login_form"):
-                login_code = st.text_input("👤 รหัสหน่วยงาน (Agency Code)", placeholder="เช่น cgduthai หรือ office01")
+                login_code = st.text_input("👤 รหัสหน่วยงาน (Agency Code)", placeholder="เช่น cgduthai หรือ singloma01")
                 login_pass = st.text_input("🔑 รหัสผ่าน (Password)", type="password")
                 submit_login = st.form_submit_button("🚀 เข้าสู่ระบบ", type="primary", use_container_width=True)
 
@@ -208,7 +208,7 @@ if not st.session_state.is_logged_in:
                                 else:
                                     st.error("❌ ไม่พบรหัสหน่วยงานนี้ในระบบ")
                             except Exception as e:
-                                st.error(f"⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล: {e}")
+                                st.error(f"⚠️ ข้อผิดพลาดเชื่อมต่อฐานข้อมูล: {e}")
 
         st.markdown("<hr style='margin: 18px 0px;'>", unsafe_allow_html=True)
         with st.expander("➕ ยังไม่มีหน่วยงาน? คลิกที่นี่เพื่อลงทะเบียน"):
@@ -230,7 +230,7 @@ if not st.session_state.is_logged_in:
                                 "admin_email": new_email.strip() if new_email else "-",
                                 "password": new_pass.strip()
                             }).execute()
-                            st.success("🎉 ลงทะเบียนสำเร็จ! คุณสามารถเข้าสู่ระบบได้ทันที")
+                            st.success("🎉 ลงทะเบียนสำเร็จ! สามารถนำรหัสและรหัสผ่านไปเข้าสู่ระบบได้ทันที")
                         except Exception as e:
                             st.error(f"⚠️ รหัสหน่วยงานซ้ำ หรือเกิดข้อผิดพลาด: {e}")
     st.stop()
@@ -302,7 +302,6 @@ def get_shared_data(fiscal_year_str, agency_id):
     ]
     df = None
 
-    # 1. ค้นหาว่าหน่วยงานนี้เคยอัปโหลดบัญชีครุภัณฑ์ในตาราง agency_assets หรือไม่
     if supabase:
         try:
             asset_res = supabase.table("agency_assets").select("asset_code, row_data").eq("agency_id", agency_id).eq("fiscal_year", year_key).execute()
@@ -315,7 +314,6 @@ def get_shared_data(fiscal_year_str, agency_id):
         except Exception:
             df = None
 
-    # 2. หากยังไม่เคยอัปโหลด (ดึงไฟล์เดิมเฉพาะ cgduthai เท่านั้น หน่วยงานใหม่อื่นๆ ให้ได้ตารางว่าง 0 รายการ)
     if df is None:
         if agency_id in ["cgduthai", "default_agency"]:
             file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
@@ -332,7 +330,6 @@ def get_shared_data(fiscal_year_str, agency_id):
         else:
             df = pd.DataFrame(columns=default_columns)
 
-    # จัดเตรียมคอลัมน์มาตรฐานการตรวจ ป้องกัน KeyError
     audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
     for col in audit_cols:
         if col not in df.columns:
@@ -341,7 +338,6 @@ def get_shared_data(fiscal_year_str, agency_id):
     for col in df.columns:
         df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
-    # 3. ดึงผลการตรวจจาก Supabase เจาะจงเฉพาะ agency_id
     if supabase:
         try:
             response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).eq("agency_id", agency_id).execute()
@@ -370,7 +366,7 @@ def get_shared_data(fiscal_year_str, agency_id):
                         new_r['วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row.get('updated_at') or '-')
                         df = pd.concat([df, pd.DataFrame([new_r])], ignore_index=True)
         except Exception as e:
-            st.error(f"⚠️ ข้อผิดพลาดในการเชื่อมโยงผลตรวจ: {e}")
+            st.error(f"⚠️ ข้อผิดพลาดเชื่อมโยงผลตรวจ: {e}")
 
     return df, target_col, year_key
 
@@ -424,7 +420,6 @@ with col_upload_top:
                 st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** (ตรวจพบ {len(p_df)} รายการ)")
 
                 if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
-                    # ใช้ Dictionary เพื่อตัดรหัสครุภัณฑ์ซ้ำ ป้องกัน Error 21000
                     upload_dict = {}
                     for _, r in p_df.iterrows():
                         c_val = str(r[m_code_col]).strip()
@@ -494,6 +489,13 @@ def render_status_badge(status_val, cond_val, inspector_val):
         st.markdown(f"<div class='status-box-green'>✅ ผ่านการตรวจแล้ว{detail}</div>", unsafe_allow_html=True)
     else:
         st.markdown("<div class='status-box-red'>❌ ยังไม่ได้ตรวจ</div>", unsafe_allow_html=True)
+
+def render_save_status_badge(status_val, timestamp_val):
+    if status_val == 'ตรวจแล้ว':
+        time_info = f" (เมื่อ: {timestamp_val})" if timestamp_val and timestamp_val != '-' else ""
+        st.markdown(f"<div class='status-box-green'>✅ รายการนี้ได้บันทึกแล้ว{time_info}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_auto_submit_qr_scanner():
     scanner_html = """
@@ -630,7 +632,23 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-m1, m2, m3, m4, m5, m6 = st.columns(6)
+condition_options = [
+    "ปกติ", 
+    "ชำรุด/เสียหาย", 
+    "หมดความจำเป็น", 
+    "ให้ยืม/ยืมมา", 
+    "โอน", 
+    "แลกเปลี่ยน", 
+    "เสื่อมสภาพ", 
+    "สูญหาย", 
+    "รอจำหน่าย", 
+    "จำหน่ายแล้ว", 
+    "แปรสภาพหรือทำลาย"
+]
+other_conditions = condition_options[3:]
+
+# แถวแสดงกล่องสรุปความคืบหน้า 7 ช่อง (รวมรายงานสภาพอื่นๆ)
+m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
 m1.metric("📦 ทั้งหมด", total_items)
 m2.metric("✔️ ตรวจแล้ว", checked_items)
 m3.metric("⏳ ยังไม่ตรวจ", unchecked_items)
@@ -638,13 +656,20 @@ m4.metric("✅ สภาพปกติ", normal_count)
 m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
 m6.metric("📦 หมดความจำเป็น", obsolete_count)
 
+with m7:
+    selected_top_other = st.selectbox(
+        "📋 สภาพอื่นๆ",
+        options=["เลือกดูสภาพ..."] + other_conditions,
+        key="top_other_metric_dropdown"
+    )
+    if selected_top_other != "เลือกดูสภาพ...":
+        other_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == selected_top_other)])
+        st.markdown(f"<div style='font-size: 15px; font-weight: 700; color: #1d4ed8; text-align: center; margin-top: -6px;'>จำนวน: {other_count} ราย</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='font-size: 12px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกดูจำนวน</div>", unsafe_allow_html=True)
+
 if total_items == 0:
     st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์'** ด้านบน เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นครับ")
-
-condition_options = [
-    "ปกติ", "ชำรุด/เสียหาย", "หมดความจำเป็น", "ให้ยืม/ยืมมา",
-    "โอน", "แลกเปลี่ยน", "เสื่อมสภาพ", "สูญหาย", "รอจำหน่าย", "จำหน่ายแล้ว", "แปรสภาพหรือทำลาย"
-]
 
 st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
@@ -681,6 +706,10 @@ if selected_menu == m1_name:
         inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
 
     display_df = df[valid_mask].copy()
+
+    # กรองตามการเลือก Dropdown "สภาพอื่นๆ" ด้านบน ถ้ามีการเลือก
+    if selected_top_other != "เลือกดูสภาพ...":
+        display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_other]
 
     if status_filter != "ทั้งหมด":
         display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
