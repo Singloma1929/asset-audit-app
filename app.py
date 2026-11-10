@@ -295,14 +295,23 @@ def parse_local_excel_file(filepath):
     target_col = potential_cols[0] if potential_cols else df.columns[0]
     return df, target_col
 
-# --- 📦 ดึงข้อมูลหลัก (ตาราง agency_assets ของหน่วยงาน -> Fallback ไปหาไฟล์เดิม) ---
-@st.cache_resource
-def get_shared_data(fiscal_year_str, agency_id):
-    year_key = "2570"
-    if "2568" in fiscal_year_str:
-        year_key = "2568"
-    elif "2569" in fiscal_year_str:
-        year_key = "2569"
+# 2. หากยังไม่เคยอัปโหลด (อนุญาตให้ดึงไฟล์แม่แบบ GitHub เฉพาะ cgduthai เท่านั้น)
+    if df is None:
+        if agency_id in ["cgduthai", "default_agency"]:
+            file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
+            default_file = None
+            for f in file_candidates:
+                if os.path.exists(f):
+                    default_file = f
+                    break
+
+            if default_file:
+                df, target_col = parse_local_excel_file(default_file)
+            else:
+                df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
+        else:
+            # หน่วยงานใหม่ที่ยังไม่อัปโหลดไฟล์ ให้เป็น DataFrame ว่างเปล่า (0 รายการ)
+            df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
 
     df = None
     target_col = "หมายเลขครุภัณฑ์"
