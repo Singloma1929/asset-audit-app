@@ -36,15 +36,16 @@ st.set_page_config(
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 2.0rem;
-        padding-bottom: 2rem;
+        padding-top: 4.5rem !important;
+        padding-bottom: 2rem !important;
     }
     .app-header {
         font-size: 26px;
         font-weight: 700;
         color: #1f2937;
         margin-top: 5px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
+        line-height: 1.5 !important;
     }
     .agency-banner {
         background: linear-gradient(135deg, #1e3a8a, #3b82f6);
@@ -294,27 +295,6 @@ def parse_local_excel_file(filepath):
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_col = potential_cols[0] if potential_cols else df.columns[0]
     return df, target_col
-
-# 2. หากยังไม่เคยอัปโหลด (อนุญาตให้ดึงไฟล์แม่แบบ GitHub เฉพาะ cgduthai เท่านั้น)
-    if df is None:
-        if agency_id in ["cgduthai", "default_agency"]:
-            file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
-            default_file = None
-            for f in file_candidates:
-                if os.path.exists(f):
-                    default_file = f
-                    break
-
-            if default_file:
-                df, target_col = parse_local_excel_file(default_file)
-            else:
-                df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
-        else:
-            # หน่วยงานใหม่ที่ยังไม่อัปโหลดไฟล์ ให้เป็น DataFrame ว่างเปล่า (0 รายการ)
-            df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
-
-    df = None
-    target_col = "หมายเลขครุภัณฑ์"
 
 # --- 📦 ดึงข้อมูลหลัก (ตาราง agency_assets ของหน่วยงาน -> Fallback เฉพาะ cgduthai) ---
 @st.cache_resource
@@ -591,9 +571,10 @@ m3.metric("⏳ ยังไม่ตรวจ", unchecked_items)
 m4.metric("✅ สภาพปกติ", normal_count)
 m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
 m6.metric("📦 หมดความจำเป็น", obsolete_count)
-# 🟢 วางตรงนี้ได้เลยครับ (แจ้งเตือนทันทีเมื่อยังไม่มีครุภัณฑ์ในระบบ)
-    if total_items == 0:
-        st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณาคลิกเลือกแท็บเมนู **'📤 อัปโหลดทะเบียนครุภัณฑ์ (Excel)'** ด้านล่าง เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นของหน่วยงานครับ")
+
+# แจ้งเตือนทันทีเมื่อยังไม่มีครุภัณฑ์ในระบบ (เขียนชิดซ้ายสุด ป้องกัน IndentationError)
+if total_items == 0:
+    st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณาคลิกเลือกแท็บเมนู **'📤 อัปโหลดทะเบียนครุภัณฑ์ (Excel)'** ด้านล่าง เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นของหน่วยงานครับ")
 
 condition_options = [
     "ปกติ", "ชำรุด/เสียหาย", "หมดความจำเป็น", "ให้ยืม/ยืมมา",
