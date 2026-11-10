@@ -371,30 +371,51 @@ def get_shared_data(fiscal_year_str, agency_id):
     return df, target_col, year_key
 
 # 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
+# --- ฟังก์ชันดึงปีงบประมาณที่มีข้อมูลอยู่จริงในระบบของหน่วยงานนี้ ---
+@st.cache_data(ttl=10)
+def get_agency_years(agency_id):
+    if not supabase: return ["2570"]
+    try:
+        res = supabase.table("agency_assets").select("fiscal_year").eq("agency_id", agency_id).execute()
+        if res.data:
+            # ดึงปีออกมา ลบค่าซ้ำ และเรียงจากปีล่าสุดไปเก่าสุด
+            years = sorted(list(set([str(r['fiscal_year']) for r in res.data])), reverse=True)
+            if years: return years
+    except:
+        pass
+    return ["2570"]
+
+available_years = get_agency_years(active_agency)
+
+# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
 col_year_top, col_upload_top = st.columns([2.5, 4.5])
 
 with col_year_top:
-    selected_fiscal_year = st.selectbox(
-        "📅 เลือกปีงบประมาณ",
-        options=["ปีงบฯ 2570 (ปัจจุบัน)", "ปีงบฯ 2569", "ปีงบฯ 2568"],
+    # Dropdown จะแสดงเฉพาะปีที่มีข้อมูล ถ้าเพิ่งสมัครใหม่จะแสดง 2570 เป็นค่าตั้งต้น
+    year_key = st.selectbox(
+        "📅 เลือกปีงบประมาณที่ต้องการดูข้อมูล",
+        options=available_years,
         key="global_fiscal_year_select"
     )
-
-year_key = "2570"
-if "2568" in selected_fiscal_year:
-    year_key = "2568"
-elif "2569" in selected_fiscal_year:
-    year_key = "2569"
+    selected_fiscal_year = f"ปีงบฯ {year_key}"
 
 with col_upload_top:
-    st.write("")
+    st.write("")  # เว้นระยะให้ปุ่มเสมอกับกล่อง dropdown
     with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
-        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}** ({selected_fiscal_year})")
-        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ข้อมูลจะถูกจัดเก็บแยกเฉพาะหน่วยงานของคุณอย่างปลอดภัย")
+        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}**")
+        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ระบบจะพยายามอ่านปีงบประมาณจากชื่อไฟล์ให้อัตโนมัติ")
         
         top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
+        
         if top_excel_upload:
             try:
+                # 1. พยายามดึงปี พ.ศ. (ตัวเลข 4 หลักที่ขึ้นต้นด้วย 25) จากชื่อไฟล์
+                year_match = re.search(r'(25\d{2})', top_excel_upload.name)
+                extracted_year = year_match.group(1) if year_match else year_key
+                
+                # ให้ผู้ใช้ยืนยันหรือแก้ไขปีงบประมาณของไฟล์นี้ก่อนบันทึก
+                upload_year = st.text_input("📌 ระบุปีงบประมาณสำหรับไฟล์นี้ (เช่น 2568)", value=extracted_year)
+
                 raw_excel = pd.read_excel(top_excel_upload, header=None)
                 
                 header_idx = None
@@ -421,6 +442,8 @@ with col_upload_top:
 
                 if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
                     upload_dict = {}
+                    clean_upload_year = str(upload_year).strip()
+                    
                     for _, r in p_df.iterrows():
                         c_val = str(r[m_code_col]).strip()
                         if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
@@ -428,7 +451,7 @@ with col_upload_top:
                         r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
                         upload_dict[c_val] = {
                             "agency_id": active_agency,
-                            "fiscal_year": year_key,
+                            "fiscal_year": clean_upload_year, # บันทึกตามปีที่ระบุในกล่องข้อความ ไม่ใช่ตาม Dropdown ด้านนอก
                             "asset_code": c_val,
                             "row_data": r_data
                         }
@@ -443,8 +466,10 @@ with col_upload_top:
                                 on_conflict="agency_id,fiscal_year,asset_code"
                             ).execute()
 
+                        # ล้างแคชเพื่อให้ Dropdown ปีงบประมาณอัปเดตค่าใหม่
+                        get_agency_years.clear()
                         get_shared_data.clear()
-                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์สำเร็จ {len(upload_rows)} รายการ")
+                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์ปี {clean_upload_year} สำเร็จ {len(upload_rows)} รายการ")
                         st.rerun()
                     else:
                         st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
