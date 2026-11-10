@@ -36,7 +36,7 @@ st.set_page_config(
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 2.5rem;
+        padding-top: 2.0rem;
         padding-bottom: 2rem;
     }
     .app-header {
