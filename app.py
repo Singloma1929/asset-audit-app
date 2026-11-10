@@ -239,28 +239,10 @@ if not st.session_state.is_logged_in:
                             st.error(f"⚠️ รหัสหน่วยงานซ้ำ หรือเกิดข้อผิดพลาด: {e}")
     st.stop()
 
-active_agency = st.session_state.current_agency
 
-with st.sidebar:
-    st.markdown("### 👤 ข้อมูลผู้ใช้งาน")
-    st.info(f"**หน่วยงาน:** {st.session_state.current_agency_name}\n\n**รหัส:** `{active_agency}`")
-
-    if st.button("🚪 ออกจากระบบ (Logout)", type="secondary", use_container_width=True):
-        st.session_state.is_logged_in = False
-        st.session_state.current_agency = ""
-        st.session_state.current_agency_name = ""
-        st.session_state.current_password = ""
-        st.rerun()
-
-st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Secure Cloud Version)</div>", unsafe_allow_html=True)
-
-st.markdown(f"""
-    <div class='agency-banner'>
-        <span>📌 กำลังปฏิบัติงานในนาม: <b>{st.session_state.current_agency_name}</b> (รหัส: {active_agency})</span>
-        <span style='font-size: 13px; background: rgba(255,255,255,0.25); padding: 4px 10px; border-radius: 6px;'>Secure Multi-Tenant</span>
-    </div>
-""", unsafe_allow_html=True)
-
+# =========================================================
+# --- ฟังก์ชันหลักทั้งหมด (จัดวางไว้ด้านบนเพื่อป้องกัน NameError) ---
+# =========================================================
 header_row = 4
 
 def parse_local_excel_file(filepath):
@@ -299,118 +281,6 @@ def get_agency_years(agency_id):
     except:
         pass
     return ["รอการอัปโหลดไฟล์"]
-
-available_years = get_agency_years(active_agency)
-
-col_year_top, col_upload_top = st.columns([2.5, 4.5])
-
-with col_year_top:
-    selected_fiscal_year = st.selectbox(
-        "📅 เลือกปีงบประมาณที่ต้องการดูข้อมูล",
-        options=available_years,
-        key="global_fiscal_year_select"
-    )
-    year_key = selected_fiscal_year
-
-with col_upload_top:
-    st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
-    with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
-        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}**")
-        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ระบบจะพยายามอ่านปีงบประมาณจากชื่อไฟล์ให้อัตโนมัติ")
-        
-        top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
-        
-        if top_excel_upload:
-            try:
-                year_match = re.search(r'(25\d{2})', top_excel_upload.name)
-                default_year = year_match.group(1) if year_match else (year_key if year_key != "รอการอัปโหลดไฟล์" else "2570")
-                upload_year = st.text_input("📌 ระบุปีงบประมาณสำหรับไฟล์นี้ (เช่น 2570)", value=default_year)
-
-                raw_excel = pd.read_excel(top_excel_upload, header=None)
-                
-                header_idx = None
-                for idx in range(min(15, len(raw_excel))):
-                    row_vals = [str(v).strip() for v in raw_excel.iloc[idx].values if pd.notna(v)]
-                    if any(any(k in val for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์']) for val in row_vals):
-                        header_idx = idx
-                        break
-                    elif any('รายการ' in val for val in row_vals) and any('รหัส' in val or 'เลข' in val for val in row_vals):
-                        header_idx = idx
-                        break
-                
-                if header_idx is None:
-                    header_idx = header_row if len(raw_excel) > header_row else 0
-                
-                p_df = raw_excel.iloc[header_idx + 1:].copy().reset_index(drop=True)
-                p_df.columns = [str(c).strip() for c in raw_excel.iloc[header_idx].values]
-                p_df = p_df.dropna(how='all').reset_index(drop=True)
-
-                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์', 'รหัส', 'เลข'])]
-                m_code_col = code_cols[0] if code_cols else p_df.columns[0]
-                
-                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** (ตรวจพบ {len(p_df)} รายการ)")
-
-                if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
-                    upload_dict = {}
-                    clean_upload_year = str(upload_year).strip()
-                    for _, r in p_df.iterrows():
-                        c_val = str(r[m_code_col]).strip()
-                        if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
-                            continue
-                        r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
-                        upload_dict[c_val] = {
-                            "agency_id": active_agency,
-                            "fiscal_year": clean_upload_year,
-                            "asset_code": c_val,
-                            "row_data": r_data
-                        }
-
-                    upload_rows = list(upload_dict.values())
-                    if upload_rows and supabase:
-                        batch_size = 150
-                        for i in range(0, len(upload_rows), batch_size):
-                            supabase.table("agency_assets").upsert(
-                                upload_rows[i:i + batch_size],
-                                on_conflict="agency_id,fiscal_year,asset_code"
-                            ).execute()
-
-                        get_agency_years.clear()
-                        get_shared_data.clear()
-                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์ปี {clean_upload_year} สำเร็จ {len(upload_rows)} รายการ")
-                        st.rerun()
-                    else:
-                        st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
-            except Exception as ex:
-                st.error(f"เกิดข้อผิดพลาด: {ex}")
-        
-        st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
-        st.markdown("🧨 **พื้นที่อันตราย (ล้างข้อมูล)**")
-        st.caption(f"หากอัปโหลดไฟล์ผิด สามารถกดลบข้อมูลของปี **{year_key}** ทิ้งเพื่ออัปโหลดใหม่ได้")
-        
-        confirm_pass = st.text_input(f"กรอกรหัสผ่านของหน่วยงานเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
-        
-        if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {year_key} ทิ้งทั้งหมด", type="secondary", use_container_width=True):
-            if confirm_pass:
-                try:
-                    res = supabase.table("agencies").select("password").eq("agency_code", active_agency).execute()
-                    if res.data and str(res.data[0].get("password", "")).strip() == confirm_pass.strip():
-                        if year_key != "รอการอัปโหลดไฟล์":
-                            supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
-                            supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
-                            
-                            get_agency_years.clear()
-                            get_shared_data.clear()
-                            
-                            st.session_state.flash_success_msg = f"🗑️ ล้างข้อมูลปี {year_key} ออกจากระบบเรียบร้อยแล้ว!"
-                            st.rerun()
-                    else:
-                        st.error("❌ รหัสผ่านไม่ถูกต้อง ไม่สามารถลบข้อมูลได้")
-                except Exception as e:
-                    st.error(f"⚠️ เกิดข้อผิดพลาดในการตรวจสอบรหัสผ่าน: {e}")
-            else:
-                st.warning("⚠️ กรุณากรอกรหัสผ่านก่อนกดยืนยันการลบ")
-
-st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
 @st.cache_data(ttl=60)
 def get_shared_data(fiscal_year_str, agency_id):
@@ -584,6 +454,151 @@ def render_auto_submit_qr_scanner():
     """
     return components.html(scanner_html, height=340)
 
+def is_valid_asset_code(val):
+    if pd.isna(val): return False
+    val_str = str(val).strip()
+    if val_str == '' or val_str.lower() == 'nan' or val_str == '-': return False
+    return bool(re.search(r'\d', val_str))
+
+
+# =========================================================
+# --- หน้าจอส่วนหลัก (Main UI) ---
+# =========================================================
+
+active_agency = st.session_state.current_agency
+
+with st.sidebar:
+    st.markdown("### 👤 ข้อมูลผู้ใช้งาน")
+    st.info(f"**หน่วยงาน:** {st.session_state.current_agency_name}\n\n**รหัส:** `{active_agency}`")
+
+    if st.button("🚪 ออกจากระบบ (Logout)", type="secondary", use_container_width=True):
+        st.session_state.is_logged_in = False
+        st.session_state.current_agency = ""
+        st.session_state.current_agency_name = ""
+        st.session_state.current_password = ""
+        st.rerun()
+
+st.markdown("<div class='app-header'>🏛️ ระบบตรวจครุภัณฑ์ (Secure Cloud Version)</div>", unsafe_allow_html=True)
+
+st.markdown(f"""
+    <div class='agency-banner'>
+        <span>📌 กำลังปฏิบัติงานในนาม: <b>{st.session_state.current_agency_name}</b> (รหัส: {active_agency})</span>
+        <span style='font-size: 13px; background: rgba(255,255,255,0.25); padding: 4px 10px; border-radius: 6px;'>Secure Multi-Tenant</span>
+    </div>
+""", unsafe_allow_html=True)
+
+available_years = get_agency_years(active_agency)
+
+col_year_top, col_upload_top = st.columns([2.5, 4.5])
+
+with col_year_top:
+    selected_fiscal_year = st.selectbox(
+        "📅 เลือกปีงบประมาณที่ต้องการดูข้อมูล",
+        options=available_years,
+        key="global_fiscal_year_select"
+    )
+    year_key = selected_fiscal_year
+
+with col_upload_top:
+    st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
+    with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
+        st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}**")
+        st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ระบบจะพยายามอ่านปีงบประมาณจากชื่อไฟล์ให้อัตโนมัติ")
+        
+        top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
+        
+        if top_excel_upload:
+            try:
+                year_match = re.search(r'(25\d{2})', top_excel_upload.name)
+                default_year = year_match.group(1) if year_match else (year_key if year_key != "รอการอัปโหลดไฟล์" else "2570")
+                upload_year = st.text_input("📌 ระบุปีงบประมาณสำหรับไฟล์นี้ (เช่น 2570)", value=default_year)
+
+                raw_excel = pd.read_excel(top_excel_upload, header=None)
+                
+                header_idx = None
+                for idx in range(min(15, len(raw_excel))):
+                    row_vals = [str(v).strip() for v in raw_excel.iloc[idx].values if pd.notna(v)]
+                    if any(any(k in val for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์']) for val in row_vals):
+                        header_idx = idx
+                        break
+                    elif any('รายการ' in val for val in row_vals) and any('รหัส' in val or 'เลข' in val for val in row_vals):
+                        header_idx = idx
+                        break
+                
+                if header_idx is None:
+                    header_idx = header_row if len(raw_excel) > header_row else 0
+                
+                p_df = raw_excel.iloc[header_idx + 1:].copy().reset_index(drop=True)
+                p_df.columns = [str(c).strip() for c in raw_excel.iloc[header_idx].values]
+                p_df = p_df.dropna(how='all').reset_index(drop=True)
+
+                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์', 'รหัส', 'เลข'])]
+                m_code_col = code_cols[0] if code_cols else p_df.columns[0]
+                
+                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** (ตรวจพบ {len(p_df)} รายการ)")
+
+                if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
+                    upload_dict = {}
+                    clean_upload_year = str(upload_year).strip()
+                    for _, r in p_df.iterrows():
+                        c_val = str(r[m_code_col]).strip()
+                        if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
+                            continue
+                        r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
+                        upload_dict[c_val] = {
+                            "agency_id": active_agency,
+                            "fiscal_year": clean_upload_year,
+                            "asset_code": c_val,
+                            "row_data": r_data
+                        }
+
+                    upload_rows = list(upload_dict.values())
+                    if upload_rows and supabase:
+                        batch_size = 150
+                        for i in range(0, len(upload_rows), batch_size):
+                            supabase.table("agency_assets").upsert(
+                                upload_rows[i:i + batch_size],
+                                on_conflict="agency_id,fiscal_year,asset_code"
+                            ).execute()
+
+                        get_agency_years.clear()
+                        get_shared_data.clear()
+                        show_1sec_popup(f"✅ บันทึกครุภัณฑ์ปี {clean_upload_year} สำเร็จ {len(upload_rows)} รายการ")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
+            except Exception as ex:
+                st.error(f"เกิดข้อผิดพลาด: {ex}")
+        
+        st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+        st.markdown("🧨 **พื้นที่อันตราย (ล้างข้อมูล)**")
+        st.caption(f"หากอัปโหลดไฟล์ผิด สามารถกดลบข้อมูลของปี **{year_key}** ทิ้งเพื่ออัปโหลดใหม่ได้")
+        
+        confirm_pass = st.text_input(f"กรอกรหัสผ่านของหน่วยงานเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
+        
+        if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {year_key} ทิ้งทั้งหมด", type="secondary", use_container_width=True):
+            if confirm_pass:
+                try:
+                    res = supabase.table("agencies").select("password").eq("agency_code", active_agency).execute()
+                    if res.data and str(res.data[0].get("password", "")).strip() == confirm_pass.strip():
+                        if year_key != "รอการอัปโหลดไฟล์":
+                            supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
+                            supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
+                            
+                            get_agency_years.clear()
+                            get_shared_data.clear()
+                            
+                            st.session_state.flash_success_msg = f"🗑️ ล้างข้อมูลปี {year_key} ออกจากระบบเรียบร้อยแล้ว!"
+                            st.rerun()
+                    else:
+                        st.error("❌ รหัสผ่านไม่ถูกต้อง ไม่สามารถลบข้อมูลได้")
+                except Exception as e:
+                    st.error(f"⚠️ เกิดข้อผิดพลาดในการตรวจสอบรหัสผ่าน: {e}")
+            else:
+                st.warning("⚠️ กรุณากรอกรหัสผ่านก่อนกดยืนยันการลบ")
+
+st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
+
 if "flash_success_msg" in st.session_state:
     st.toast(st.session_state.flash_success_msg, icon="✅")
     st.success(st.session_state.flash_success_msg)
@@ -610,12 +625,6 @@ for c in required_system_cols:
 
 if target_column not in df.columns:
     df[target_column] = '-'
-
-def is_valid_asset_code(val):
-    if pd.isna(val): return False
-    val_str = str(val).strip()
-    if val_str == '' or val_str.lower() == 'nan' or val_str == '-': return False
-    return bool(re.search(r'\d', val_str))
 
 valid_mask = df[target_column].apply(is_valid_asset_code) if target_column in df.columns else pd.Series([False]*len(df))
 valid_df = df[valid_mask]
