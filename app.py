@@ -388,19 +388,29 @@ with col_upload_top:
         st.markdown("🧨 **พื้นที่อันตราย (ล้างข้อมูล)**")
         st.caption(f"หากอัปโหลดไฟล์ผิด สามารถกดลบข้อมูลของปี **{year_key}** ทิ้งเพื่ออัปโหลดใหม่ได้")
         
-        confirm_pass = st.text_input(f"กรอกรหัสผ่านเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
+confirm_pass = st.text_input(f"กรอกรหัสผ่านของหน่วยงานเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
         
         if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {year_key} ทิ้งทั้งหมด", type="secondary", use_container_width=True):
-            if confirm_pass == st.session_state.current_password:
-                if year_key != "รอการอัปโหลดไฟล์":
-                    supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
-                    supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
-                    
-                    get_agency_years.clear()
-                    get_shared_data.clear()
-                    st.rerun()
-            elif confirm_pass != "":
-                st.error("❌ รหัสผ่านไม่ถูกต้อง ไม่สามารถลบข้อมูลได้")
+            if confirm_pass:
+                try:
+                    # เช็กรหัสผ่านจากฐานข้อมูลโดยตรง เพื่อความชัวร์ที่สุด
+                    res = supabase.table("agencies").select("password").eq("agency_code", active_agency).execute()
+                    if res.data and str(res.data[0].get("password", "")).strip() == confirm_pass.strip():
+                        if year_key != "รอการอัปโหลดไฟล์":
+                            # ลบข้อมูลออกจาก Cloud
+                            supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
+                            supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
+                            
+                            # ล้างแคชหน้าเว็บ
+                            get_agency_years.clear()
+                            get_shared_data.clear()
+                            
+                            st.session_state.flash_success_msg = f"🗑️ ล้างข้อมูลปี {year_key} ออกจากระบบเรียบร้อยแล้ว!"
+                            st.rerun()
+                    else:
+                        st.error("❌ รหัสผ่านไม่ถูกต้อง ไม่สามารถลบข้อมูลได้")
+                except Exception as e:
+                    st.error(f"⚠️ เกิดข้อผิดพลาดในการตรวจสอบรหัสผ่าน: {e}")
             else:
                 st.warning("⚠️ กรุณากรอกรหัสผ่านก่อนกดยืนยันการลบ")
 
