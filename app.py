@@ -281,20 +281,40 @@ with col_upload_top:
         top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
         if top_excel_upload:
             try:
-                try:
-                    p_df = pd.read_excel(top_excel_upload, header=header_row)
-                except Exception:
-                    p_df = pd.read_excel(top_excel_upload)
+                # 1. อ่านไฟล์แบบดิบเพื่อสแกนหาแถวหัวตารางจริง
+                raw_excel = pd.read_excel(top_excel_upload, header=None)
+                
+                header_idx = None
+                for idx in range(min(15, len(raw_excel))):
+                    row_vals = [str(v).strip() for v in raw_excel.iloc[idx].values if pd.notna(v)]
+                    # หาแถวที่มีคำว่า หมายเลขครุภัณฑ์ หรือ รหัส
+                    if any(any(k in val for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์']) for val in row_vals):
+                        header_idx = idx
+                        break
+                    elif any('รายการ' in val for val in row_vals) and any('รหัส' in val or 'เลข' in val for val in row_vals):
+                        header_idx = idx
+                        break
+                
+                # หากหาไม่เจอให้ใช้ค่าเริ่มต้นแถวที่ 4
+                if header_idx is None:
+                    header_idx = header_row if len(raw_excel) > header_row else 0
+                
+                p_df = raw_excel.iloc[header_idx + 1:].copy().reset_index(drop=True)
+                p_df.columns = [str(c).strip() for c in raw_excel.iloc[header_idx].values]
+                p_df = p_df.dropna(how='all').reset_index(drop=True)
 
-                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
+                # ค้นหาคอลัมน์รหัสครุภัณฑ์ที่แท้จริง
+                code_cols = [c for c in p_df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'เลขครุภัณฑ์', 'รหัส', 'เลข'])]
                 m_code_col = code_cols[0] if code_cols else p_df.columns[0]
-                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** ({len(p_df)} รายการ)")
+                
+                st.success(f"🎯 พบคอลัมน์รหัส: **'{m_code_col}'** (ตรวจพบ {len(p_df)} รายการ)")
 
                 if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
                     upload_rows = []
                     for _, r in p_df.iterrows():
                         c_val = str(r[m_code_col]).strip()
-                        if not c_val or c_val in ['nan', 'None', '-']:
+                        # กรองเอาเฉพาะแถวที่มีตัวเลขรหัสจริง
+                        if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
                             continue
                         r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
                         upload_rows.append({
@@ -315,6 +335,8 @@ with col_upload_top:
                         get_shared_data.clear()
                         show_1sec_popup(f"✅ บันทึกครุภัณฑ์สำเร็จ {len(upload_rows)} รายการ")
                         st.rerun()
+                    else:
+                        st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
             except Exception as ex:
                 st.error(f"เกิดข้อผิดพลาด: {ex}")
 
