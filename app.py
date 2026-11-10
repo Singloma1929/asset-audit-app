@@ -374,7 +374,7 @@ def get_shared_data(fiscal_year_str, agency_id):
 # --- ฟังก์ชันดึงปีงบประมาณที่มีข้อมูลอยู่จริงในระบบของหน่วยงานนี้ ---
 @st.cache_data(ttl=10)
 def get_agency_years(agency_id):
-    if not supabase: return ["2570"]
+    if not supabase: return ["ไม่มีข้อมูล"] # <--- เปลี่ยนตรงนี้
     try:
         res = supabase.table("agency_assets").select("fiscal_year").eq("agency_id", agency_id).execute()
         if res.data:
@@ -383,7 +383,7 @@ def get_agency_years(agency_id):
             if years: return years
     except:
         pass
-    return ["2570"]
+    return ["รอการอัปโหลดไฟล์"] # <--- เปลี่ยนตรงนี้ (กรณีหน่วยงานใหม่เพิ่งล็อกอินเข้ามา)
 
 available_years = get_agency_years(active_agency)
 
