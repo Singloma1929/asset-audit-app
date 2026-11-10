@@ -316,7 +316,19 @@ def parse_local_excel_file(filepath):
     df = None
     target_col = "หมายเลขครุภัณฑ์"
 
-    # 1. ลองค้นหาว่าหน่วยงานนี้เคยอัปโหลดบัญชีครุภัณฑ์ในตาราง agency_assets หรือไม่
+# --- 📦 ดึงข้อมูลหลัก (ตาราง agency_assets ของหน่วยงาน -> Fallback เฉพาะ cgduthai) ---
+@st.cache_resource
+def get_shared_data(fiscal_year_str, agency_id):
+    year_key = "2570"
+    if "2568" in fiscal_year_str:
+        year_key = "2568"
+    elif "2569" in fiscal_year_str:
+        year_key = "2569"
+
+    df = None
+    target_col = "หมายเลขครุภัณฑ์"
+
+    # 1. ค้นหาว่าหน่วยงานนี้เคยอัปโหลดบัญชีครุภัณฑ์ในตาราง agency_assets หรือไม่
     if supabase:
         try:
             asset_res = supabase.table("agency_assets").select("asset_code, row_data").eq("agency_id", agency_id).eq("fiscal_year", year_key).execute()
@@ -329,17 +341,20 @@ def parse_local_excel_file(filepath):
         except Exception:
             df = None
 
-    # 2. หากยังไม่เคยอัปโหลด ให้ดึงจากไฟล์แม่แบบบนเครื่อง/GitHub (Fallback)
+    # 2. หากยังไม่เคยอัปโหลด (ดึงไฟล์เดิมเฉพาะ cgduthai เท่านั้น หน่วยงานใหม่อื่นๆ ให้ได้ตารางว่าง 0 รายการ)
     if df is None:
-        file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
-        default_file = None
-        for f in file_candidates:
-            if os.path.exists(f):
-                default_file = f
-                break
+        if agency_id in ["cgduthai", "default_agency"]:
+            file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
+            default_file = None
+            for f in file_candidates:
+                if os.path.exists(f):
+                    default_file = f
+                    break
 
-        if default_file:
-            df, target_col = parse_local_excel_file(default_file)
+            if default_file:
+                df, target_col = parse_local_excel_file(default_file)
+            else:
+                df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
         else:
             df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
 
@@ -352,7 +367,7 @@ def parse_local_excel_file(filepath):
     for col in df.columns:
         df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
 
-    # 3. ดึงผลการตรวจจาก Supabase โดยเจาะจง agency_id ของหน่วยงานนี้
+    # 3. ดึงผลการตรวจจาก Supabase เจาะจงเฉพาะ agency_id
     if supabase:
         try:
             response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).eq("agency_id", agency_id).execute()
