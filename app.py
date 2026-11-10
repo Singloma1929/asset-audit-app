@@ -308,6 +308,22 @@ def get_shared_data(fiscal_year_str, agency_id):
     df = None
     target_col = "หมายเลขครุภัณฑ์"
 
+# --- 📦 ดึงข้อมูลหลัก (เปลี่ยนเป็น @st.cache_data เพื่อจัดการ DataFrame ได้อย่างถูกต้อง) ---
+@st.cache_data(ttl=60)
+def get_shared_data(fiscal_year_str, agency_id):
+    year_key = "2570"
+    if "2568" in fiscal_year_str:
+        year_key = "2568"
+    elif "2569" in fiscal_year_str:
+        year_key = "2569"
+
+    target_col = "หมายเลขครุภัณฑ์"
+    default_columns = [
+        target_col, "รายการ", "อยู่ที่", 
+        "สภาพครุภัณฑ์", "สถานะการตรวจ", "หมายเหตุ", "ผู้ตรวจ", "วันเดือนปี เวลา ที่ทำการตรวจสอบ"
+    ]
+    df = None
+
     # 1. ค้นหาว่าหน่วยงานนี้เคยอัปโหลดบัญชีครุภัณฑ์ในตาราง agency_assets หรือไม่
     if supabase:
         try:
@@ -334,11 +350,11 @@ def get_shared_data(fiscal_year_str, agency_id):
             if default_file:
                 df, target_col = parse_local_excel_file(default_file)
             else:
-                df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
+                df = pd.DataFrame(columns=default_columns)
         else:
-            df = pd.DataFrame(columns=[target_col, "รายการ", "อยู่ที่"])
+            df = pd.DataFrame(columns=default_columns)
 
-    # จัดเตรียมคอลัมน์มาตรฐานการตรวจ
+    # จัดเตรียมคอลัมน์มาตรฐานการตรวจ ป้องกัน KeyError 100%
     audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
     for col in audit_cols:
         if col not in df.columns:
@@ -528,7 +544,17 @@ if scanned_param:
     st.query_params.clear()
 
 # โหลดข้อมูล
+# โหลดข้อมูล
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year, active_agency)
+
+# 🛡️ เสริมเกราะป้องกัน KeyError: ตรวจสอบว่าต้องมีคอลัมน์ระบบครบถ้วนเสมอ
+required_system_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+for c in required_system_cols:
+    if c not in df.columns:
+        df[c] = 'ยังไม่ตรวจ' if c == 'สถานะการตรวจ' else '-'
+
+if target_column not in df.columns:
+    df[target_column] = '-'
 
 def is_valid_asset_code(val):
     if pd.isna(val):
@@ -541,12 +567,8 @@ def is_valid_asset_code(val):
 valid_mask = df[target_column].apply(is_valid_asset_code) if target_column in df.columns else pd.Series([False]*len(df))
 valid_df = df[valid_mask]
 total_items = len(valid_df)
-checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
-unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
-
-normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
-damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
-obsolete_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'หมดความจำเป็น')])
+checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว']) if 'สถานะการตรวจ' in valid_df.columns else 0
+unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ']) if 'สถานะการตรวจ' in valid_df.columns else 0
 
 progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
 bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
