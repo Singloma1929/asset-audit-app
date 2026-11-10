@@ -161,12 +161,16 @@ def show_1sec_popup(message, is_success=True):
     st.markdown(f"<div class='auto-popup-badge {cls}'>{message}</div>", unsafe_allow_html=True)
 
 # --- 🔐 ระบบ Login & จัดการสิทธิ์หน่วยงาน ---
+# --- 🔐 ระบบ Login & จัดการสิทธิ์หน่วยงาน ---
 if "is_logged_in" not in st.session_state:
     st.session_state.is_logged_in = False
 if "current_agency" not in st.session_state:
     st.session_state.current_agency = ""
 if "current_agency_name" not in st.session_state:
     st.session_state.current_agency_name = ""
+# เพิ่มบรรทัดนี้ลงไปเพื่อป้องกัน AttributeError
+if "current_password" not in st.session_state:
+    st.session_state.current_password = ""
 
 if not st.session_state.is_logged_in:
     st.markdown("<br><br>", unsafe_allow_html=True)
