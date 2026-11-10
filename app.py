@@ -258,7 +258,6 @@ st.markdown(f"""
 
 header_row = 4
 
-# --- 🔄 ฟังก์ชันประมวลผลโครงสร้างไฟล์ Excel ท้องถิ่น ---
 def parse_local_excel_file(filepath):
     if filepath.endswith('.csv'):
         raw_df = pd.read_csv(filepath, header=None)
@@ -270,7 +269,6 @@ def parse_local_excel_file(filepath):
 
     top_cols = raw_df.iloc[header_row].fillna('').astype(str).str.strip()
     sub_cols = raw_df.iloc[header_row + 1].fillna('').astype(str).str.strip()
-
     combined_columns = []
     for t, s in zip(top_cols, sub_cols):
         if s and s != 'None' and s != t:
@@ -281,140 +279,48 @@ def parse_local_excel_file(filepath):
     df = raw_df.iloc[header_row + 2:].copy()
     df.columns = [str(c).strip() for c in combined_columns]
     df = df.dropna(how='all').reset_index(drop=True)
-
     potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
     target_col = potential_cols[0] if potential_cols else df.columns[0]
     return df, target_col
 
-# --- 📦 ดึงข้อมูลหลัก (ตาราง agency_assets ของหน่วยงาน -> Fallback เฉพาะ cgduthai) ---
-@st.cache_data(ttl=60)
-def get_shared_data(fiscal_year_str, agency_id):
-    year_key = "2570"
-    if "2568" in fiscal_year_str:
-        year_key = "2568"
-    elif "2569" in fiscal_year_str:
-        year_key = "2569"
-
-    target_col = "หมายเลขครุภัณฑ์"
-    default_columns = [
-        target_col, "รายการ", "อยู่ที่", 
-        "สภาพครุภัณฑ์", "สถานะการตรวจ", "หมายเหตุ", "ผู้ตรวจ", "วันเดือนปี เวลา ที่ทำการตรวจสอบ"
-    ]
-    df = None
-
-    if supabase:
-        try:
-            asset_res = supabase.table("agency_assets").select("asset_code, row_data").eq("agency_id", agency_id).eq("fiscal_year", year_key).execute()
-            if asset_res.data and len(asset_res.data) > 0:
-                rows = [item["row_data"] for item in asset_res.data if isinstance(item.get("row_data"), dict)]
-                if rows:
-                    df = pd.DataFrame(rows)
-                    potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
-                    target_col = potential_cols[0] if potential_cols else df.columns[0]
-        except Exception:
-            df = None
-
-    if df is None:
-        if agency_id in ["cgduthai", "default_agency"]:
-            file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
-            default_file = None
-            for f in file_candidates:
-                if os.path.exists(f):
-                    default_file = f
-                    break
-
-            if default_file:
-                df, target_col = parse_local_excel_file(default_file)
-            else:
-                df = pd.DataFrame(columns=default_columns)
-        else:
-            df = pd.DataFrame(columns=default_columns)
-
-    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
-    for col in audit_cols:
-        if col not in df.columns:
-            df[col] = 'ยังไม่ตรวจ' if col == 'สถานะการตรวจ' else '-'
-
-    for col in df.columns:
-        df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
-
-    if supabase:
-        try:
-            response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).eq("agency_id", agency_id).execute()
-            saved_data = response.data
-
-            if saved_data:
-                for row in saved_data:
-                    code = str(row.get('asset_code', '')).strip()
-                    raw_note = str(row.get('note', '-')) if pd.notna(row.get('note')) else '-'
-                    actual_note = raw_note.split("||ASSET_DATA||")[0].strip() if "||ASSET_DATA||" in raw_note else raw_note
-
-                    mask = df[target_col].astype(str).str.strip() == code
-                    if mask.any():
-                        df.loc[mask, 'สภาพครุภัณฑ์'] = str(row.get('condition') or '-')
-                        df.loc[mask, 'สถานะการตรวจ'] = str(row.get('status') or 'ยังไม่ตรวจ')
-                        df.loc[mask, 'ผู้ตรวจ'] = str(row.get('inspector') or '-')
-                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row.get('updated_at') or '-')
-                        df.loc[mask, 'หมายเหตุ'] = actual_note if actual_note else '-'
-                    else:
-                        new_r = {c: '-' for c in df.columns}
-                        new_r[target_col] = code
-                        new_r['สภาพครุภัณฑ์'] = str(row.get('condition') or '-')
-                        new_r['สถานะการตรวจ'] = str(row.get('status') or 'ยังไม่ตรวจ')
-                        new_r['หมายเหตุ'] = actual_note if actual_note else '-'
-                        new_r['ผู้ตรวจ'] = str(row.get('inspector') or '-')
-                        new_r['วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row.get('updated_at') or '-')
-                        df = pd.concat([df, pd.DataFrame([new_r])], ignore_index=True)
-        except Exception as e:
-            st.error(f"⚠️ ข้อผิดพลาดเชื่อมโยงผลตรวจ: {e}")
-
-    return df, target_col, year_key
-
-# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
-# --- ฟังก์ชันดึงปีงบประมาณที่มีข้อมูลอยู่จริงในระบบของหน่วยงานนี้ ---
 @st.cache_data(ttl=10)
 def get_agency_years(agency_id):
-    if not supabase: return ["ไม่มีข้อมูล"] # <--- เปลี่ยนตรงนี้
+    if not supabase: return ["รอการอัปโหลดไฟล์"]
     try:
         res = supabase.table("agency_assets").select("fiscal_year").eq("agency_id", agency_id).execute()
         if res.data:
-            # ดึงปีออกมา ลบค่าซ้ำ และเรียงจากปีล่าสุดไปเก่าสุด
             years = sorted(list(set([str(r['fiscal_year']) for r in res.data])), reverse=True)
             if years: return years
     except:
         pass
-    return ["รอการอัปโหลดไฟล์"] # <--- เปลี่ยนตรงนี้ (กรณีหน่วยงานใหม่เพิ่งล็อกอินเข้ามา)
+    return ["รอการอัปโหลดไฟล์"]
 
 available_years = get_agency_years(active_agency)
 
-# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel ประจำหน่วยงาน
+# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel
 col_year_top, col_upload_top = st.columns([2.5, 4.5])
 
 with col_year_top:
-    # Dropdown จะแสดงเฉพาะปีที่มีข้อมูล ถ้าเพิ่งสมัครใหม่จะแสดง 2570 เป็นค่าตั้งต้น
-    year_key = st.selectbox(
+    selected_fiscal_year = st.selectbox(
         "📅 เลือกปีงบประมาณที่ต้องการดูข้อมูล",
         options=available_years,
         key="global_fiscal_year_select"
     )
-    selected_fiscal_year = f"ปีงบฯ {year_key}"
+    year_key = selected_fiscal_year
 
 with col_upload_top:
-    st.write("")  # เว้นระยะให้ปุ่มเสมอกับกล่อง dropdown
+    # 🎯 ใช้ CSS ดันกล่อง Pop-over ให้ลงมาขนานกับช่อง Selectbox ได้พอดี
+    st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
     with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
         st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}**")
         st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ระบบจะพยายามอ่านปีงบประมาณจากชื่อไฟล์ให้อัตโนมัติ")
         
         top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
-        
         if top_excel_upload:
             try:
-                # 1. พยายามดึงปี พ.ศ. (ตัวเลข 4 หลักที่ขึ้นต้นด้วย 25) จากชื่อไฟล์
                 year_match = re.search(r'(25\d{2})', top_excel_upload.name)
-                extracted_year = year_match.group(1) if year_match else year_key
-                
-                # ให้ผู้ใช้ยืนยันหรือแก้ไขปีงบประมาณของไฟล์นี้ก่อนบันทึก
-                upload_year = st.text_input("📌 ระบุปีงบประมาณสำหรับไฟล์นี้ (เช่น 2568)", value=extracted_year)
+                default_year = year_match.group(1) if year_match else (year_key if year_key != "รอการอัปโหลดไฟล์" else "2570")
+                upload_year = st.text_input("📌 ระบุปีงบประมาณสำหรับไฟล์นี้ (เช่น 2570)", value=default_year)
 
                 raw_excel = pd.read_excel(top_excel_upload, header=None)
                 
@@ -443,7 +349,6 @@ with col_upload_top:
                 if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
                     upload_dict = {}
                     clean_upload_year = str(upload_year).strip()
-                    
                     for _, r in p_df.iterrows():
                         c_val = str(r[m_code_col]).strip()
                         if not c_val or c_val in ['nan', 'None', '-'] or not re.search(r'\d', c_val):
@@ -451,13 +356,12 @@ with col_upload_top:
                         r_data = {str(k): ('' if pd.isna(v) else str(v).strip()) for k, v in r.items()}
                         upload_dict[c_val] = {
                             "agency_id": active_agency,
-                            "fiscal_year": clean_upload_year, # บันทึกตามปีที่ระบุในกล่องข้อความ ไม่ใช่ตาม Dropdown ด้านนอก
+                            "fiscal_year": clean_upload_year,
                             "asset_code": c_val,
                             "row_data": r_data
                         }
 
                     upload_rows = list(upload_dict.values())
-
                     if upload_rows and supabase:
                         batch_size = 150
                         for i in range(0, len(upload_rows), batch_size):
@@ -466,7 +370,6 @@ with col_upload_top:
                                 on_conflict="agency_id,fiscal_year,asset_code"
                             ).execute()
 
-                        # ล้างแคชเพื่อให้ Dropdown ปีงบประมาณอัปเดตค่าใหม่
                         get_agency_years.clear()
                         get_shared_data.clear()
                         show_1sec_popup(f"✅ บันทึกครุภัณฑ์ปี {clean_upload_year} สำเร็จ {len(upload_rows)} รายการ")
@@ -478,6 +381,85 @@ with col_upload_top:
 
 st.markdown("<hr style='margin: 6px 0px 12px 0px;'>", unsafe_allow_html=True)
 
+@st.cache_data(ttl=60)
+def get_shared_data(fiscal_year_str, agency_id):
+    target_col = "หมายเลขครุภัณฑ์"
+    default_columns = [
+        target_col, "รายการ", "อยู่ที่", 
+        "สภาพครุภัณฑ์", "สถานะการตรวจ", "หมายเหตุ", "ผู้ตรวจ", "วันเดือนปี เวลา ที่ทำการตรวจสอบ"
+    ]
+    
+    if fiscal_year_str == "รอการอัปโหลดไฟล์":
+        return pd.DataFrame(columns=default_columns), target_col, "รอการอัปโหลดไฟล์"
+
+    year_key = str(fiscal_year_str).strip()
+    df = None
+
+    if supabase:
+        try:
+            asset_res = supabase.table("agency_assets").select("asset_code, row_data").eq("agency_id", agency_id).eq("fiscal_year", year_key).execute()
+            if asset_res.data and len(asset_res.data) > 0:
+                rows = [item["row_data"] for item in asset_res.data if isinstance(item.get("row_data"), dict)]
+                if rows:
+                    df = pd.DataFrame(rows)
+                    potential_cols = [c for c in df.columns if any(k in str(c) for k in ['หมายเลขครุภัณฑ์', 'รหัส', 'เลข'])]
+                    target_col = potential_cols[0] if potential_cols else df.columns[0]
+        except Exception:
+            df = None
+
+    if df is None:
+        if agency_id in ["cgduthai", "default_agency"]:
+            file_candidates = [f"default_asset_{year_key}.xlsx", f"default_asset_{year_key}.xls", "default_asset.xlsx", "default_asset.xls"]
+            default_file = None
+            for f in file_candidates:
+                if os.path.exists(f):
+                    default_file = f
+                    break
+            if default_file:
+                df, target_col = parse_local_excel_file(default_file)
+            else:
+                df = pd.DataFrame(columns=default_columns)
+        else:
+            df = pd.DataFrame(columns=default_columns)
+
+    audit_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
+    for col in audit_cols:
+        if col not in df.columns:
+            df[col] = 'ยังไม่ตรวจ' if col == 'สถานะการตรวจ' else '-'
+
+    for col in df.columns:
+        df[col] = df[col].astype(str).replace('nan', '-').replace('None', '-')
+
+    if supabase:
+        try:
+            response = supabase.table("core_assetauditrecord").select("*").eq("fiscal_year", year_key).eq("agency_id", agency_id).execute()
+            saved_data = response.data
+            if saved_data:
+                for row in saved_data:
+                    code = str(row.get('asset_code', '')).strip()
+                    raw_note = str(row.get('note', '-')) if pd.notna(row.get('note')) else '-'
+                    actual_note = raw_note.split("||ASSET_DATA||")[0].strip() if "||ASSET_DATA||" in raw_note else raw_note
+                    mask = df[target_col].astype(str).str.strip() == code
+                    if mask.any():
+                        df.loc[mask, 'สภาพครุภัณฑ์'] = str(row.get('condition') or '-')
+                        df.loc[mask, 'สถานะการตรวจ'] = str(row.get('status') or 'ยังไม่ตรวจ')
+                        df.loc[mask, 'ผู้ตรวจ'] = str(row.get('inspector') or '-')
+                        df.loc[mask, 'วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row.get('updated_at') or '-')
+                        df.loc[mask, 'หมายเหตุ'] = actual_note if actual_note else '-'
+                    else:
+                        new_r = {c: '-' for c in df.columns}
+                        new_r[target_col] = code
+                        new_r['สภาพครุภัณฑ์'] = str(row.get('condition') or '-')
+                        new_r['สถานะการตรวจ'] = str(row.get('status') or 'ยังไม่ตรวจ')
+                        new_r['หมายเหตุ'] = actual_note if actual_note else '-'
+                        new_r['ผู้ตรวจ'] = str(row.get('inspector') or '-')
+                        new_r['วันเดือนปี เวลา ที่ทำการตรวจสอบ'] = str(row.get('updated_at') or '-')
+                        df = pd.concat([df, pd.DataFrame([new_r])], ignore_index=True)
+        except Exception as e:
+            st.error(f"⚠️ ข้อผิดพลาดเชื่อมโยงผลตรวจ: {e}")
+
+    return df, target_col, year_key
+
 def save_progress_to_supabase(asset_code, condition, status, note, inspector, timestamp, fiscal_year, agency_id, extra_dict=None):
     if not supabase:
         st.error("⚠️ ไม่ได้เชื่อมต่อกับ Supabase Cloud")
@@ -485,7 +467,6 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
     try:
         clean_code = str(asset_code).strip()
         existing = supabase.table("core_assetauditrecord").select("id").eq("asset_code", clean_code).eq("fiscal_year", fiscal_year).eq("agency_id", agency_id).execute()
-
         clean_note = str(note).strip() if note else "-"
         data_payload = {
             "asset_code": clean_code,
@@ -497,12 +478,10 @@ def save_progress_to_supabase(asset_code, condition, status, note, inspector, ti
             "fiscal_year": fiscal_year,
             "agency_id": agency_id
         }
-
         if existing.data:
             supabase.table("core_assetauditrecord").update(data_payload).eq("id", existing.data[0]["id"]).execute()
         else:
             supabase.table("core_assetauditrecord").insert(data_payload).execute()
-
         return True
     except Exception as e:
         st.error(f"⚠️ ไม่สามารถบันทึกลง Supabase ได้: {e}")
@@ -514,13 +493,6 @@ def render_status_badge(status_val, cond_val, inspector_val):
         st.markdown(f"<div class='status-box-green'>✅ ผ่านการตรวจแล้ว{detail}</div>", unsafe_allow_html=True)
     else:
         st.markdown("<div class='status-box-red'>❌ ยังไม่ได้ตรวจ</div>", unsafe_allow_html=True)
-
-def render_save_status_badge(status_val, timestamp_val):
-    if status_val == 'ตรวจแล้ว':
-        time_info = f" (เมื่อ: {timestamp_val})" if timestamp_val and timestamp_val != '-' else ""
-        st.markdown(f"<div class='status-box-green'>✅ รายการนี้ได้บันทึกแล้ว{time_info}</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='status-box-red'>❌ รายการนี้ยังไม่ได้บันทึก</div>", unsafe_allow_html=True)
 
 def render_auto_submit_qr_scanner():
     scanner_html = """
@@ -535,39 +507,32 @@ def render_auto_submit_qr_scanner():
         const html5QrCode = new Html5Qrcode("qr-reader");
         const qrConfig = { fps: 15, qrbox: { width: 220, height: 220 } };
         let isSubmitted = false;
-
         html5QrCode.start(
             { facingMode: "environment" }, 
             qrConfig,
             (decodedText, decodedResult) => {
                 if (isSubmitted) return;
                 isSubmitted = true;
-
                 let rawData = decodedText.trim();
                 let assetCode = rawData;
                 if (rawData.includes("?scan=")) {
                     assetCode = rawData.split("?scan=").pop().split("&")[0].trim();
                 }
-
                 document.getElementById("qr-result").innerHTML = "🔄 กำลังค้นหารหัส: <span style='color:#1d4ed8;'>" + assetCode + "</span>...";
-
                 html5QrCode.stop().then(() => {
                     const parentDoc = window.parent.document;
                     const targetInput = parentDoc.querySelector('input[aria-label="กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา"]');
-
                     if (targetInput) {
                         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
                         nativeInputValueSetter.call(targetInput, assetCode);
                         targetInput.dispatchEvent(new Event('input', { bubbles: true }));
                         targetInput.dispatchEvent(new Event('change', { bubbles: true }));
                         targetInput.focus();
-
                         setTimeout(() => {
                             const enterEvent = new KeyboardEvent('keydown', {
                                 bubbles: true, cancelable: true, keyCode: 13, key: 'Enter', code: 'Enter'
                             });
                             targetInput.dispatchEvent(enterEvent);
-
                             const buttons = parentDoc.querySelectorAll('button');
                             for (let btn of buttons) {
                                 if (btn.innerText.includes("🔍 ค้นหา")) {
@@ -605,8 +570,7 @@ if scanned_param:
     st.session_state.nav_menu_radio = "📝 ตรวจครุภัณฑ์/บันทึกผล"
     st.query_params.clear()
 
-# โหลดข้อมูล
-df, target_column, current_year_key = get_shared_data(selected_fiscal_year, active_agency)
+df, target_column, current_year_key = get_shared_data(year_key, active_agency)
 
 required_system_cols = ['สภาพครุภัณฑ์', 'สถานะการตรวจ', 'หมายเหตุ', 'ผู้ตรวจ', 'วันเดือนปี เวลา ที่ทำการตรวจสอบ']
 for c in required_system_cols:
@@ -617,11 +581,9 @@ if target_column not in df.columns:
     df[target_column] = '-'
 
 def is_valid_asset_code(val):
-    if pd.isna(val):
-        return False
+    if pd.isna(val): return False
     val_str = str(val).strip()
-    if val_str == '' or val_str.lower() == 'nan' or val_str == '-':
-        return False
+    if val_str == '' or val_str.lower() == 'nan' or val_str == '-': return False
     return bool(re.search(r'\d', val_str))
 
 valid_mask = df[target_column].apply(is_valid_asset_code) if target_column in df.columns else pd.Series([False]*len(df))
@@ -635,44 +597,20 @@ if not valid_df.empty and 'สถานะการตรวจ' in valid_df.col
     damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
     obsolete_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'หมดความจำเป็น')])
 else:
-    checked_items = 0
-    unchecked_items = 0
-    normal_count = 0
-    damaged_count = 0
-    obsolete_count = 0
+    checked_items, unchecked_items, normal_count, damaged_count, obsolete_count = 0, 0, 0, 0, 0
 
 progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
 bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
 
-st.markdown(
-    f"**ความคืบหน้าการตรวจสอบ ({selected_fiscal_year}): {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)",
-    unsafe_allow_html=True
-)
-st.markdown(
-    f"""
-    <div class="progress-wrapper">
-        <div class="progress-fill" style="width: {bar_width}%;"></div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown(f"**ความคืบหน้าการตรวจสอบ ({selected_fiscal_year}): {progress_pct:.2f}%** (ตรวจแล้ว {checked_items} จาก {total_items} รายการ)", unsafe_allow_html=True)
+st.markdown(f"""<div class="progress-wrapper"><div class="progress-fill" style="width: {bar_width}%;"></div></div>""", unsafe_allow_html=True)
 
 condition_options = [
-    "ปกติ", 
-    "ชำรุด/เสียหาย", 
-    "หมดความจำเป็น", 
-    "ให้ยืม/ยืมมา", 
-    "โอน", 
-    "แลกเปลี่ยน", 
-    "เสื่อมสภาพ", 
-    "สูญหาย", 
-    "รอจำหน่าย", 
-    "จำหน่ายแล้ว", 
-    "แปรสภาพหรือทำลาย"
+    "ปกติ", "ชำรุด/เสียหาย", "หมดความจำเป็น", "ให้ยืม/ยืมมา", 
+    "โอน", "แลกเปลี่ยน", "เสื่อมสภาพ", "สูญหาย", "รอจำหน่าย", "จำหน่ายแล้ว", "แปรสภาพหรือทำลาย"
 ]
 other_conditions = condition_options[3:]
 
-# แถวแสดงกล่องสรุปความคืบหน้า 7 ช่อง (รวมรายงานสภาพอื่นๆ)
 m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
 m1.metric("📦 ทั้งหมด", total_items)
 m2.metric("✔️ ตรวจแล้ว", checked_items)
@@ -702,55 +640,31 @@ m1_name = "🔍 ค้นหา/แก้ไขข้อมูล"
 m2_name = "📝 ตรวจครุภัณฑ์/บันทึกผล"
 m3_name = "🏷️ สร้าง QR Code"
 m4_name = "📥 ส่งออกรายงาน Excel"
-
 menu_options = [m1_name, m2_name, m3_name, m4_name]
 
-selected_menu = st.radio(
-    "เลือกเมนูการทำงาน:",
-    options=menu_options,
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_menu_radio"
-)
-
+selected_menu = st.radio("เลือกเมนูการทำงาน:", options=menu_options, horizontal=True, label_visibility="collapsed", key="nav_menu_radio")
 st.markdown("<hr style='margin: 10px 0px 16px 0px;'>", unsafe_allow_html=True)
 status_options = ["ตรวจแล้ว", "ยังไม่ตรวจ"]
 
-# ================= MENU 1: ค้นหา =================
 if selected_menu == m1_name:
     st.subheader(f"🔍 รายการครุภัณฑ์ของ {st.session_state.current_agency_name} ({selected_fiscal_year})")
-
     col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-    with col_s1:
-        search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์, สถานที่...", key="search_main_1")
-    with col_s2:
-        condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options, key="filter_cond_main_1")
-    with col_s3:
-        status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด"] + status_options, key="filter_main_1")
-    with col_s4:
-        inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
+    with col_s1: search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, หมายเลขครุภัณฑ์, สถานที่...", key="search_main_1")
+    with col_s2: condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + condition_options, key="filter_cond_main_1")
+    with col_s3: status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด"] + status_options, key="filter_main_1")
+    with col_s4: inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
 
     display_df = df[valid_mask].copy()
-
-    # กรองตามการเลือก Dropdown "สภาพอื่นๆ" ด้านบน ถ้ามีการเลือก
-    if selected_top_other != "เลือกดูสภาพ...":
-        display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_other]
-
-    if status_filter != "ทั้งหมด":
-        display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
-    if condition_filter != "ทั้งหมด":
-        display_df = display_df[display_df['สภาพครุภัณฑ์'] == condition_filter]
-    if inspector_filter:
-        display_df = display_df[display_df['ผู้ตรวจ'].astype(str).str.contains(inspector_filter, case=False, na=False)]
-    if search_query:
-        display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
+    if selected_top_other != "เลือกดูสภาพ...": display_df = display_df[display_df['สภาพครุภัณฑ์'] == selected_top_other]
+    if status_filter != "ทั้งหมด": display_df = display_df[display_df['สถานะการตรวจ'] == status_filter]
+    if condition_filter != "ทั้งหมด": display_df = display_df[display_df['สภาพครุภัณฑ์'] == condition_filter]
+    if inspector_filter: display_df = display_df[display_df['ผู้ตรวจ'].astype(str).str.contains(inspector_filter, case=False, na=False)]
+    if search_query: display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
     st.dataframe(display_df, use_container_width=True)
 
-# ================= MENU 2: ตรวจครุภัณฑ์ =================
 elif selected_menu == m2_name:
     st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
-
     def on_asset_input_change():
         raw_val = st.session_state.get("scanned_asset_box", "").strip()
         if raw_val:
@@ -764,27 +678,17 @@ elif selected_menu == m2_name:
     with left_box:
         with st.container(border=True):
             st.markdown("##### 🔎 ค้นหาหรือสแกน QR Code")
-            if "open_scanner" not in st.session_state:
-                st.session_state.open_scanner = False
-
+            if "open_scanner" not in st.session_state: st.session_state.open_scanner = False
             btn_label = "❌ ปิดกล้องสแกน" if st.session_state.open_scanner else "📷 สแกน QR Code ด้วยกล้องมือถือ"
             if st.button(btn_label, use_container_width=True, type="primary" if not st.session_state.open_scanner else "secondary"):
                 st.session_state.open_scanner = not st.session_state.open_scanner
                 st.rerun()
 
-            if st.session_state.open_scanner:
-                render_auto_submit_qr_scanner()
+            if st.session_state.open_scanner: render_auto_submit_qr_scanner()
 
-            scanned_code_input = st.text_input(
-                "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
-                key="scanned_asset_box",
-                placeholder="สแกน QR Code หรือพิมพ์หมายเลข...",
-                on_change=on_asset_input_change
-            )
-
+            scanned_code_input = st.text_input("กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา", key="scanned_asset_box", placeholder="สแกน QR Code หรือพิมพ์หมายเลข...", on_change=on_asset_input_change)
             col_btn_mid, col_space_mid = st.columns([1.5, 2.5])
-            with col_btn_mid:
-                search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
+            with col_btn_mid: search_triggered_mid = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
 
     if search_triggered_mid and scanned_code_input.strip():
         raw_val = scanned_code_input.strip()
@@ -798,21 +702,17 @@ elif selected_menu == m2_name:
     if current_query:
         search_term = current_query.split("?scan=").pop().split("&")[0].strip() if "?scan=" in current_query else current_query
         matched_mob = valid_df[valid_df[target_column].astype(str).str.strip().str.contains(search_term, case=False, na=False, regex=False)]
-        
         if matched_mob.empty:
             matched_mob = valid_df[valid_df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False, regex=False)).any(axis=1)]
 
         if st.session_state.get("trigger_popup_check", False):
             st.session_state.trigger_popup_check = False
-            if not matched_mob.empty:
-                show_1sec_popup("✅ ค้นพบข้อมูล", is_success=True)
-            else:
-                show_1sec_popup("❌ ไม่พบข้อมูลในหน่วยงานนี้", is_success=False)
+            if not matched_mob.empty: show_1sec_popup("✅ ค้นพบข้อมูล", is_success=True)
+            else: show_1sec_popup("❌ ไม่พบข้อมูลในหน่วยงานนี้", is_success=False)
 
         if not matched_mob.empty:
             target_row_data = matched_mob.iloc[0]
             mob_target = str(target_row_data[target_column]).strip()
-
             st.markdown(f"### 📝 บันทึกผลการตรวจรหัส: <span style='color: #1d4ed8;'>{mob_target}</span>", unsafe_allow_html=True)
             with st.container(border=True):
                 col_info_badge, col_info_details = st.columns([1.5, 1.5])
@@ -826,7 +726,6 @@ elif selected_menu == m2_name:
                 default_cond_idx = condition_options.index(cur_cond) if cur_cond in condition_options else 0
                 cur_status = str(target_row_data['สถานะการตรวจ']).strip()
                 default_status_idx = status_options.index(cur_status) if cur_status in status_options else 0
-
                 cur_note = str(target_row_data['หมายเหตุ']).strip()
                 if cur_note in ['-', 'nan', 'None']: cur_note = ""
                 cur_insp = str(target_row_data['ผู้ตรวจ']).strip()
@@ -834,17 +733,12 @@ elif selected_menu == m2_name:
 
                 with st.form(key=f"audit_form_{mob_target}", border=False):
                     mc1, mc2, mc3, mc4 = st.columns(4)
-                    with mc1:
-                        mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=default_cond_idx)
-                    with mc2:
-                        mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=default_status_idx)
-                    with mc3:
-                        mob_note = st.text_input("หมายเหตุเพิ่มเติม", value=cur_note)
-                    with mc4:
-                        mob_inspector = st.text_input("3. ผู้ตรวจ / กรรมการ", value=cur_insp)
+                    with mc1: mob_condition = st.selectbox("1. สภาพครุภัณฑ์", condition_options, index=default_cond_idx)
+                    with mc2: mob_status = st.selectbox("2. สถานะการตรวจ", status_options, index=default_status_idx)
+                    with mc3: mob_note = st.text_input("หมายเหตุเพิ่มเติม", value=cur_note)
+                    with mc4: mob_inspector = st.text_input("3. ผู้ตรวจ / กรรมการ", value=cur_insp)
 
                     mob_submit = st.form_submit_button("💾 บันทึกผลการตรวจทันที", type="primary", use_container_width=True)
-
                     if mob_submit:
                         thai_time = (datetime.utcnow() + timedelta(hours=7)).strftime("%d/%m/%Y %H:%M:%S")
                         ok = save_progress_to_supabase(
@@ -865,36 +759,26 @@ elif selected_menu == m2_name:
         else:
             st.warning(f"⚠️ ไม่พบครุภัณฑ์รหัส '{search_term}' ในบัญชีของหน่วยงานคุณ")
 
-# ================= MENU 3: สร้าง QR =================
 elif selected_menu == m3_name:
     st.subheader(f"🏷️ สร้างป้าย QR Code ({selected_fiscal_year})")
     selected_qr_item = st.selectbox("เลือกครุภัณฑ์", options=df[valid_mask][target_column].tolist() if not df.empty else [], key="gen_qr_tab")
     if selected_qr_item:
         base_url = "https://asset-audit-app-bbywyvjvpavzrkh8skqrmf.streamlit.app/"
         qr_payload = f"{base_url}?scan={selected_qr_item}"
-
         qr = qrcode.QRCode(version=1, box_size=10, border=2)
         qr.add_data(qr_payload)
         qr.make(fit=True)
         qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
-
         w, h = qr_img.size
         new_img = Image.new('RGB', (w, h + 28), 'white')
         new_img.paste(qr_img, (0, 0))
         draw = ImageDraw.Draw(new_img)
         draw.text((w/4, h - 2), str(selected_qr_item), fill="black")
-
         buf = BytesIO()
         new_img.save(buf, format="PNG")
         st.image(buf.getvalue(), caption=f"ป้าย QR Code: {selected_qr_item}", width=240)
-        st.download_button(
-            label=f"📥 ดาวน์โหลดรูปป้าย QR Code",
-            data=buf.getvalue(),
-            file_name=f"QR_{selected_qr_item}.png",
-            mime="image/png"
-        )
+        st.download_button(label=f"📥 ดาวน์โหลดรูปป้าย QR Code", data=buf.getvalue(), file_name=f"QR_{selected_qr_item}.png", mime="image/png")
 
-# ================= MENU 4: ส่งออก Excel =================
 elif selected_menu == m4_name:
     st.subheader(f"📥 ส่งออกรายงานสรุปผลการตรวจสอบ ({st.session_state.current_agency_name})")
     output_buffer = BytesIO()
