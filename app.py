@@ -297,18 +297,6 @@ def parse_local_excel_file(filepath):
     return df, target_col
 
 # --- 📦 ดึงข้อมูลหลัก (ตาราง agency_assets ของหน่วยงาน -> Fallback เฉพาะ cgduthai) ---
-@st.cache_resource
-def get_shared_data(fiscal_year_str, agency_id):
-    year_key = "2570"
-    if "2568" in fiscal_year_str:
-        year_key = "2568"
-    elif "2569" in fiscal_year_str:
-        year_key = "2569"
-
-    df = None
-    target_col = "หมายเลขครุภัณฑ์"
-
-# --- 📦 ดึงข้อมูลหลัก (เปลี่ยนเป็น @st.cache_data เพื่อจัดการ DataFrame ได้อย่างถูกต้อง) ---
 @st.cache_data(ttl=60)
 def get_shared_data(fiscal_year_str, agency_id):
     year_key = "2570"
@@ -544,7 +532,6 @@ if scanned_param:
     st.query_params.clear()
 
 # โหลดข้อมูล
-# โหลดข้อมูล
 df, target_column, current_year_key = get_shared_data(selected_fiscal_year, active_agency)
 
 # 🛡️ เสริมเกราะป้องกัน KeyError: ตรวจสอบว่าต้องมีคอลัมน์ระบบครบถ้วนเสมอ
@@ -567,8 +554,20 @@ def is_valid_asset_code(val):
 valid_mask = df[target_column].apply(is_valid_asset_code) if target_column in df.columns else pd.Series([False]*len(df))
 valid_df = df[valid_mask]
 total_items = len(valid_df)
-checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว']) if 'สถานะการตรวจ' in valid_df.columns else 0
-unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ']) if 'สถานะการตรวจ' in valid_df.columns else 0
+
+# นับจำนวนแยกตามสถานะและสภาพอย่างปลอดภัย
+if not valid_df.empty and 'สถานะการตรวจ' in valid_df.columns:
+    checked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว'])
+    unchecked_items = len(valid_df[valid_df['สถานะการตรวจ'] == 'ยังไม่ตรวจ'])
+    normal_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ปกติ')])
+    damaged_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'ชำรุด/เสียหาย')])
+    obsolete_count = len(valid_df[(valid_df['สถานะการตรวจ'] == 'ตรวจแล้ว') & (valid_df['สภาพครุภัณฑ์'] == 'หมดความจำเป็น')])
+else:
+    checked_items = 0
+    unchecked_items = 0
+    normal_count = 0
+    damaged_count = 0
+    obsolete_count = 0
 
 progress_pct = (checked_items / total_items) * 100 if total_items > 0 else 0.0
 bar_width = max(progress_pct, 1.5) if checked_items > 0 else 0.0
@@ -594,7 +593,7 @@ m4.metric("✅ สภาพปกติ", normal_count)
 m5.metric("⚠️ ชำรุด/เสียหาย", damaged_count)
 m6.metric("📦 หมดความจำเป็น", obsolete_count)
 
-# แจ้งเตือนทันทีเมื่อยังไม่มีครุภัณฑ์ในระบบ (เขียนชิดซ้ายสุด ป้องกัน IndentationError)
+# แจ้งเตือนทันทีเมื่อยังไม่มีครุภัณฑ์ในระบบ
 if total_items == 0:
     st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณาคลิกเลือกแท็บเมนู **'📤 อัปโหลดทะเบียนครุภัณฑ์ (Excel)'** ด้านล่าง เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นของหน่วยงานครับ")
 
