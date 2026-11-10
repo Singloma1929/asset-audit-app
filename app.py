@@ -161,14 +161,12 @@ def show_1sec_popup(message, is_success=True):
     st.markdown(f"<div class='auto-popup-badge {cls}'>{message}</div>", unsafe_allow_html=True)
 
 # --- 🔐 ระบบ Login & จัดการสิทธิ์หน่วยงาน ---
-# --- 🔐 ระบบ Login & จัดการสิทธิ์หน่วยงาน ---
 if "is_logged_in" not in st.session_state:
     st.session_state.is_logged_in = False
 if "current_agency" not in st.session_state:
     st.session_state.current_agency = ""
 if "current_agency_name" not in st.session_state:
     st.session_state.current_agency_name = ""
-# เพิ่มบรรทัดนี้ลงไปเพื่อป้องกัน AttributeError
 if "current_password" not in st.session_state:
     st.session_state.current_password = ""
 
@@ -193,7 +191,7 @@ if not st.session_state.is_logged_in:
                         st.session_state.is_logged_in = True
                         st.session_state.current_agency = "cgduthai"
                         st.session_state.current_agency_name = "สำนักงานคลังจังหวัดอุทัยธานี"
-                        st.session_state.current_password = "admin1234"
+                        st.session_state.current_password = pass_in
                         st.rerun()
                     elif not code_in or not pass_in:
                         st.error("⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน")
@@ -321,6 +319,7 @@ with col_upload_top:
         st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ระบบจะพยายามอ่านปีงบประมาณจากชื่อไฟล์ให้อัตโนมัติ")
         
         top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
+        
         if top_excel_upload:
             try:
                 year_match = re.search(r'(25\d{2})', top_excel_upload.name)
@@ -388,20 +387,17 @@ with col_upload_top:
         st.markdown("🧨 **พื้นที่อันตราย (ล้างข้อมูล)**")
         st.caption(f"หากอัปโหลดไฟล์ผิด สามารถกดลบข้อมูลของปี **{year_key}** ทิ้งเพื่ออัปโหลดใหม่ได้")
         
-confirm_pass = st.text_input(f"กรอกรหัสผ่านของหน่วยงานเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
+        confirm_pass = st.text_input(f"กรอกรหัสผ่านของหน่วยงานเพื่อยืนยันการลบข้อมูลปี {year_key}", type="password", key="confirm_delete_pass")
         
         if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {year_key} ทิ้งทั้งหมด", type="secondary", use_container_width=True):
             if confirm_pass:
                 try:
-                    # เช็กรหัสผ่านจากฐานข้อมูลโดยตรง เพื่อความชัวร์ที่สุด
                     res = supabase.table("agencies").select("password").eq("agency_code", active_agency).execute()
                     if res.data and str(res.data[0].get("password", "")).strip() == confirm_pass.strip():
                         if year_key != "รอการอัปโหลดไฟล์":
-                            # ลบข้อมูลออกจาก Cloud
                             supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
                             supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
                             
-                            # ล้างแคชหน้าเว็บ
                             get_agency_years.clear()
                             get_shared_data.clear()
                             
