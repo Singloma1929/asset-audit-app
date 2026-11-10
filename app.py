@@ -620,7 +620,7 @@ st.markdown(f"""
 
 available_years = get_agency_years(active_agency)
 
-# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มอัปโหลดไฟล์ Excel
+# 🔼 แถวควบคุมด้านบน: เลือกปีงบประมาณ + ปุ่มนำเข้าไฟล์/นำออกไฟล์ Excel
 col_year_top, col_upload_top = st.columns([2.5, 4.5])
 
 with col_year_top:
@@ -633,7 +633,7 @@ with col_year_top:
 
 with col_upload_top:
     st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
-    with st.popover("📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
+    with st.popover("📤 นำเข้าไฟล์/นำออกไฟล์ Excel บัญชีครุภัณฑ์", use_container_width=True):
         st.markdown(f"##### 📤 นำเข้าข้อมูลสำหรับ: **{st.session_state.current_agency_name}**")
         st.caption("อัปโหลดไฟล์ Excel (.xlsx, .xls) ระบบจะพยายามอ่านปีงบประมาณจากชื่อไฟล์ให้อัตโนมัติ")
         
@@ -845,7 +845,7 @@ else:
             st.markdown("<div style='font-size: 12px; color: #64748b; text-align: center; margin-top: -8px;'>เลือกดูจำนวน</div>", unsafe_allow_html=True)
 
     if total_items == 0:
-        st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า/อัปโหลดไฟล์ Excel บัญชีครุภัณฑ์'** ด้านบน เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นครับ")
+        st.info("ℹ️ หน่วยงานของคุณยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้าไฟล์/นำออกไฟล์ Excel บัญชีครุภัณฑ์'** ด้านบน เพื่อนำเข้าไฟล์ครุภัณฑ์ตั้งต้นครับ")
 
     st.markdown("<hr style='margin: 12px 0px;'>", unsafe_allow_html=True)
 
@@ -871,7 +871,7 @@ else:
         "ยังไม่ตรวจ"
     ]
 
-    # ================= MENU 1: ค้นหา / โหมดแก้ไขรายละเอียด (ครบทุกฟังก์ชันเดิม) =================
+    # ================= MENU 1: ค้นหา / โหมดแก้ไขรายละเอียด =================
     if selected_menu == m1_name:
         st.subheader(f"🔍 ค้นหาข้อมูลครุภัณฑ์ ({selected_fiscal_year})")
         
@@ -1041,7 +1041,7 @@ else:
                                     st.session_state.cloud_save_success_toast = True
                                     st.rerun()
 
-    # ================= MENU 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ (ครบทุกฟังก์ชันเดิม) =================
+    # ================= MENU 2: ตรวจครุภัณฑ์ / บันทึกผลการตรวจ =================
     elif selected_menu == m2_name:
         st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
         st.write("ใช้สำหรับสแกน QR Code หรือกรอกหมายเลขครุภัณฑ์เพื่อค้นหาและบันทึกผลการตรวจ")
@@ -1205,7 +1205,7 @@ else:
             else:
                 st.warning(f"⚠️ ไม่พบข้อมูลครุภัณฑ์รหัส '{search_term}' ในระบบ (QR Code อาจไม่ถูกต้องหรือเป็นข้อมูลจากแหล่งอื่น)")
 
-    # ================= MENU 3: สร้าง QR Code (ครบทุกฟังก์ชันเดิม) =================
+    # ================= MENU 3: สร้าง QR Code =================
     elif selected_menu == m3_name:
         st.subheader(f"🏷️ ระบบสร้าง QR Code ({selected_fiscal_year})")
         qr_options_list = df[valid_mask][target_column].tolist() if not df.empty else []
