@@ -27,7 +27,6 @@ st.set_page_config(
 THAI_TZ = timezone(timedelta(hours=7))
 HEADER_ROW_DEFAULT = 4
 
-# ชื่อเมนูเรียงตามลำดับเดิม
 M_SEARCH = "🔍 ค้นหา / แก้ไข"
 M_AUDIT = "📷 ตรวจนับ / บันทึก"
 M_QR = "🏷️ สร้าง QR Code"
@@ -293,6 +292,10 @@ st.markdown("""
 def now_thai() -> datetime:
     return datetime.now(THAI_TZ)
 
+def safe_compare(a: str, b: str) -> bool:
+    """เปรียบเทียบข้อความแบบปลอดภัย รองรับทั้งภาษาอังกฤษและ UTF-8/ภาษาไทย"""
+    return hmac.compare_digest(str(a).encode("utf-8"), str(b).encode("utf-8"))
+
 def hash_password(plain_password: str) -> str:
     """เข้ารหัสรหัสผ่านด้วย PBKDF2-HMAC-SHA256"""
     iterations = 120_000
@@ -312,23 +315,61 @@ def verify_password(plain_password: str, stored_password: str) -> tuple[bool, bo
                 bytes.fromhex(salt_hex),
                 int(iter_str),
             )
-            return hmac.compare_digest(dk.hex(), hash_hex), False
+            return safe_compare(dk.hex(), hash_hex), False
         except Exception:
             return False, False
-    is_match = hmac.compare_digest(plain_password, stored)
+    is_match = safe_compare(plain_password, stored)
     return is_match, is_match
 
 def authenticate_agency(agency_code: str, password: str) -> tuple[bool, str, str]:
     """ตรวจสอบสิทธิ์หน่วยงานและอัปเกรดรหัสผ่านเดิมเป็น Hash อัตโนมัติ"""
-    code_in = agency_code.strip().lower()
-    pass_in = password.strip()
+    code_in = str(agency_code or "").strip().lower()
+    pass_in = str(password or "").strip()
+
+    if not code_in or not pass_in:
+        return False, "", "⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน"
+
+    if DEFAULT_ADMIN_CODE and DEFAULT_ADMIN_PASSWORD:
+        if code_in == DEFAULT_ADMIN_CODE and safe_compare(pass_in, DEFAULT_ADMIN_PASSWORD):
+            return True, DEFAULT_ADMIN_NAME, ""
+
+    if not supabase:
+        return False, "", "⚠️ ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาตรวจสอบค่า SUPABASE_URL และ SUPABASE_KEY ใน Secrets"
+
+    try:
+        res = (
+            supabase.table("agencies")
+            .select("agency_code, agency_name, password")
+            .eq("agency_code", code_in)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return False, "", "❌ ไม่พบรหัสหน่วยงานนี้ในระบบ หรือรหัสผ่านไม่ถูกต้อง"
+
+        matched = res.data[0]
+        is_valid, needs_upgrade = verify_password(pass_in, matched.get("password", ""))
+        if not is_valid:
+            return False, "", "❌ รหัสผ่านไม่ถูกต้อง"
+
+        if needs_upgrade:
+            try:
+                supabase.table("agencies").update(
+                    {"password": hash_password(pass_in)}
+                ).eq("agency_code", code_in).execute()
+            except Exception:
+                pass
+
+        return True, str(matched.get("agency_name") or code_in), ""
+    except Exception as e:
+        return False, "", f"⚠️ ข้อผิดพลาดเชื่อมต่อฐานข้อมูล: {e}"
+
 def change_agency_password(agency_code: str, old_password: str, new_password: str) -> tuple[bool, str]:
     """ตรวจสอบรหัสผ่านเดิมและบันทึกรหัสผ่านใหม่แบบเข้ารหัสลง Supabase"""
-    code_in = agency_code.strip().lower()
-    old_in = old_password.strip()
-    new_in = new_password.strip()
+    code_in = str(agency_code or "").strip().lower()
+    old_in = str(old_password or "").strip()
+    new_in = str(new_password or "").strip()
 
-    # กรณีบัญชีผู้ดูแลหลักที่ตั้งค่าผ่าน Streamlit Secrets
     if DEFAULT_ADMIN_CODE and DEFAULT_ADMIN_PASSWORD and code_in == DEFAULT_ADMIN_CODE:
         return False, "⚠️ บัญชีผู้ดูแลหลักนี้ผูกกับ Streamlit Secrets กรุณาเปลี่ยนรหัสผ่านที่เมนู App settings > Secrets"
 
@@ -362,44 +403,6 @@ def change_agency_password(agency_code: str, old_password: str, new_password: st
         return True, "✅ เปลี่ยนรหัสผ่านสำเร็จเรียบร้อย! (ใช้รหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไป)"
     except Exception as e:
         return False, f"⚠️ เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน: {e}"
-
-    if not code_in or not pass_in:
-        return False, "", "⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน"
-
-    if DEFAULT_ADMIN_CODE and DEFAULT_ADMIN_PASSWORD:
-        if code_in == DEFAULT_ADMIN_CODE and hmac.compare_digest(pass_in, DEFAULT_ADMIN_PASSWORD):
-            return True, DEFAULT_ADMIN_NAME, ""
-
-    if not supabase:
-        return False, "", "⚠️ ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาตรวจสอบค่า SUPABASE_URL และ SUPABASE_KEY ใน Secrets"
-
-    try:
-        res = (
-            supabase.table("agencies")
-            .select("agency_code, agency_name, password")
-            .eq("agency_code", code_in)
-            .limit(1)
-            .execute()
-        )
-        if not res.data:
-            return False, "", "❌ ไม่พบรหัสหน่วยงานนี้ในระบบ"
-
-        matched = res.data[0]
-        is_valid, needs_upgrade = verify_password(pass_in, matched.get("password", ""))
-        if not is_valid:
-            return False, "", "❌ รหัสผ่านไม่ถูกต้อง"
-
-        if needs_upgrade:
-            try:
-                supabase.table("agencies").update(
-                    {"password": hash_password(pass_in)}
-                ).eq("agency_code", code_in).execute()
-            except Exception:
-                pass
-
-        return True, matched.get("agency_name", code_in), ""
-    except Exception as e:
-        return False, "", f"⚠️ ข้อผิดพลาดเชื่อมต่อฐานข้อมูล: {e}"
 
 def show_1sec_popup(message: str, is_success: bool = True):
     cls = "popup-success" if is_success else "popup-error"
@@ -1184,7 +1187,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 1. แถบ KPI 6 กล่อง + ช่อง "📋 สภาพอื่นๆ" แบบเดิมอยู่แถวเดียวกัน
+# แถบ KPI 6 กล่อง + ช่อง "📋 สภาพอื่นๆ" (แสดงยอดสรุปอย่างเดียว ไม่ผูกกรองกับตารางด้านล่าง)
 other_conditions = CONDITION_OPTIONS[3:]
 col_kpis, col_other_cond = st.columns([6, 1.6])
 
@@ -1230,7 +1233,7 @@ if other_summary:
 if total_items == 0:
     st.info("ℹ️ ยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า / ล้างข้อมูลบัญชีครุภัณฑ์ (Excel)'** ด้านบนครับ")
 
-# 2. เมนูนำทางเรียงตามลำดับเดิม: ค้นหา/แก้ไข -> ตรวจนับ/บันทึก -> สร้าง QR Code -> ส่งออก Excel
+# เมนูนำทางเรียงตามลำดับเดิม
 selected_menu = st.radio(
     "เลือกเมนู:",
     options=[M_SEARCH, M_AUDIT, M_QR, M_EXPORT],
@@ -1248,7 +1251,7 @@ if selected_menu == M_SEARCH:
 
     col_s1, col_s2, col_s3, col_s4 = st.columns(4)
     with col_s1:
-        search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, รหัส, สถานที่...", key="search_main_1")
+        search_query = st.text_input("พิมพ์ค้นหา:", placeholder="ชื่อ, รหัส, สถานที่, สภาพ...", key="search_main_1")
     with col_s2:
         condition_filter = st.selectbox("กรองสภาพครุภัณฑ์", ["ทั้งหมด"] + CONDITION_OPTIONS, key="filter_cond_main_1")
     with col_s3:
@@ -1258,20 +1261,6 @@ if selected_menu == M_SEARCH:
 
     display_df = valid_df.copy()
 
-    if status_filter != "ทั้งหมด":
-        display_df = display_df[display_df["สถานะการตรวจ"] == status_filter]
-    if condition_filter != "ทั้งหมด":
-        display_df = display_df[display_df["สภาพครุภัณฑ์"] == condition_filter]
-    if inspector_filter:
-        display_df = display_df[
-            display_df["ผู้ตรวจ"].astype(str).str.contains(inspector_filter, case=False, na=False, regex=False)
-        ]
-    if search_query:
-        display_df = display_df[
-            display_df.astype(str)
-            .apply(lambda col: col.str.contains(search_query, case=False, na=False, regex=False))
-            .any(axis=1)
-        ]
     if status_filter != "ทั้งหมด":
         display_df = display_df[display_df["สถานะการตรวจ"] == status_filter]
     if condition_filter != "ทั้งหมด":
@@ -1444,7 +1433,6 @@ elif selected_menu == M_AUDIT:
             st.session_state.open_scanner = False
             st.session_state.trigger_popup_check = True
 
-    # ส่วนบน: กล่องสแกน QR และค้นหารหัสครุภัณฑ์
     with st.container(border=True):
         st.markdown("##### 🔎 สแกน QR Code หรือกรอกหมายเลขครุภัณฑ์")
 
@@ -1488,7 +1476,6 @@ elif selected_menu == M_AUDIT:
 
     current_query = st.session_state.get("active_search_query", "")
 
-    # 3. ส่วนล่าง: แสดงรายการที่ค้นหาเจอ + ฟอร์มบันทึกผลการตรวจด้านล่างฟังก์ชันค้นหาเหมือนเดิม
     if not current_query:
         st.info("👆 กด **เปิดกล้องสแกน QR Code** หรือพิมพ์หมายเลขครุภัณฑ์ด้านบนเพื่อค้นหาและบันทึกผลการตรวจ")
     else:
