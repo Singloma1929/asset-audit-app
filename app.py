@@ -1340,17 +1340,6 @@ if selected_menu == M_SEARCH:
         status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด"] + STATUS_OPTIONS, key="filter_main_1")
     with col_s4:
         inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
-
-    # กล้องสแกน QR Code สำหรับหน้าค้นหา
-    if st.session_state.open_search_scanner:
-        with st.container(border=True):
-            st.caption("📷 ส่องกล้องไปที่ป้าย QR Code เพื่อกรองแสดงข้อมูลครุภัณฑ์ในตารางทันที")
-            render_auto_submit_qr_scanner(
-                target_aria_label="พิมพ์ค้นหา:",
-                submit_button_text="",
-                reader_id="qr-reader-search",
-            )
-
     display_df = valid_df.copy()
 
     if status_filter != "ทั้งหมด":
