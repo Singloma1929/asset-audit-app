@@ -994,6 +994,23 @@ with st.sidebar:
     st.markdown("### 👤 ข้อมูลผู้ใช้งาน")
     st.info(f"**หน่วยงาน:** {active_agency_name}\n\n**รหัส:** `{active_agency}`")
 
+    with st.expander("🔑 เปลี่ยนรหัสผ่าน"):
+        with st.form("change_password_form", clear_on_submit=True):
+            old_pwd = st.text_input("รหัสผ่านเดิม", type="password")
+            new_pwd = st.text_input("รหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)", type="password")
+            confirm_new_pwd = st.text_input("ยืนยันรหัสผ่านใหม่", type="password")
+            btn_chg_pwd = st.form_submit_button("💾 บันทึกรหัสผ่านใหม่", type="primary", use_container_width=True)
+
+            if btn_chg_pwd:
+                if new_pwd != confirm_new_pwd:
+                    st.error("❌ รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน")
+                else:
+                    ok_chg, msg_chg = change_agency_password(active_agency, old_pwd, new_pwd)
+                    if ok_chg:
+                        st.success(msg_chg)
+                    else:
+                        st.error(msg_chg)
+
     if st.button("🔄 รีเฟรชข้อมูลล่าสุดจาก Cloud", use_container_width=True):
         get_agency_years.clear()
         get_shared_data.clear()
