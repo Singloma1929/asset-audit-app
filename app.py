@@ -26,6 +26,7 @@ st.set_page_config(
 
 THAI_TZ = timezone(timedelta(hours=7))
 HEADER_ROW_DEFAULT = 4
+MAX_UPLOAD_YEARS = 3  # จำกัดสูงสุด 3 ไฟล์ / 3 ปีงบประมาณต่อหน่วยงาน
 
 M_SEARCH = "🔍 ค้นหา / แก้ไข"
 M_AUDIT = "📷 ตรวจนับ / บันทึก"
@@ -535,6 +536,27 @@ def fetch_all_rows(
     return all_rows
 
 @st.cache_data(ttl=30, show_spinner=False)
+def get_uploaded_cloud_years(agency_id: str) -> list[str]:
+    """ดึงรายชื่อปีงบประมาณที่หน่วยงานอัปโหลดไฟล์ Excel เก็บไว้บน Supabase จริง (สำหรับคุมโควต้า)"""
+    if not supabase:
+        return []
+    years_set = set()
+    try:
+        rows = fetch_all_rows(
+            "agency_assets",
+            "fiscal_year",
+            {"agency_id": agency_id},
+            order_col="fiscal_year",
+        )
+        for r in rows:
+            fy = str(r.get("fiscal_year") or "").strip()
+            if fy and fy != "รอการอัปโหลดไฟล์":
+                years_set.add(fy)
+    except Exception:
+        pass
+    return sorted(years_set, reverse=True)
+
+@st.cache_data(ttl=30, show_spinner=False)
 def get_agency_years(agency_id: str) -> list[str]:
     years_set = set()
     if agency_id in {"cgduthai", "default_agency"}:
@@ -1040,6 +1062,7 @@ with st.sidebar:
                         st.error(msg_chg)
 
     if st.button("🔄 รีเฟรชข้อมูลล่าสุดจาก Cloud", use_container_width=True):
+        get_uploaded_cloud_years.clear()
         get_agency_years.clear()
         get_shared_data.clear()
         df_to_excel_bytes.clear()
@@ -1074,6 +1097,9 @@ if scanned_param:
 
 # แถวเลือกปีงบประมาณ + จัดการไฟล์ Excel
 available_years = get_agency_years(active_agency)
+cloud_uploaded_years = get_uploaded_cloud_years(active_agency)
+used_quota = len(cloud_uploaded_years)
+
 col_year_top, col_upload_top = st.columns([2, 3])
 
 with col_year_top:
@@ -1086,9 +1112,27 @@ with col_year_top:
 
 with col_upload_top:
     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    with st.popover("📤 นำเข้า / ล้างข้อมูลบัญชีครุภัณฑ์ (Excel)", use_container_width=True):
+    popover_label = f"📤 นำเข้า / ล้างข้อมูลบัญชีครุภัณฑ์ (ใช้โควต้า {used_quota}/{MAX_UPLOAD_YEARS} ปี)"
+    with st.popover(popover_label, use_container_width=True):
         st.markdown(f"##### 📤 นำเข้าข้อมูล: **{active_agency_name}**")
-        st.caption("รองรับไฟล์ .xlsx และ .xls (อัปโหลดทับข้อมูลตั้งต้นได้โดยไม่ลบผลการตรวจเดิม)")
+
+        # แสดงสถานะโควต้าการจัดเก็บไฟล์บน Cloud (สูงสุด 3 ไฟล์ / 3 ปีงบประมาณ)
+        quota_ratio = min(used_quota / MAX_UPLOAD_YEARS, 1.0)
+        stored_years_text = ", ".join(cloud_uploaded_years) if cloud_uploaded_years else "ยังไม่มีไฟล์บน Cloud"
+        st.progress(
+            quota_ratio,
+            text=f"📊 โควต้าพื้นที่จัดเก็บ Cloud: ใช้ไปแล้ว {used_quota} / {MAX_UPLOAD_YEARS} ปีงบประมาณ ({stored_years_text})",
+        )
+
+        if used_quota >= MAX_UPLOAD_YEARS:
+            st.warning(
+                f"⚠️ **โควต้าครบ {MAX_UPLOAD_YEARS} ปีงบประมาณแล้ว** เพื่อแบ่งปันพื้นที่ Cloud ร่วมกับหน่วยงานอื่น "
+                f"สามารถอัปโหลดทับปีเดิม ({stored_years_text}) ได้ หรือ **ลบข้อมูลปีเก่าด้านล่างออกก่อน** เพื่ออัปโหลดปีใหม่"
+            )
+        else:
+            st.caption(
+                f"รองรับไฟล์ .xlsx และ .xls (เก็บได้สูงสุด {MAX_UPLOAD_YEARS} ปีงบประมาณต่อหน่วยงาน / อัปโหลดทับปีเดิมไม่ลบผลการตรวจเดิม)"
+            )
 
         top_excel_upload = st.file_uploader("เลือกไฟล์ Excel", type=["xlsx", "xls"], key="top_uploader_key")
 
@@ -1101,6 +1145,7 @@ with col_upload_top:
                     else (year_key if year_key != "รอการอัปโหลดไฟล์" else str(now_thai().year + 543))
                 )
                 upload_year = st.text_input("📌 ปีงบประมาณสำหรับไฟล์นี้ (เช่น 2570)", value=default_year)
+                clean_upload_year = str(upload_year).strip()
 
                 raw_excel = read_excel_source(top_excel_upload)
                 p_df, m_code_col = parse_excel_dataframe(raw_excel)
@@ -1108,70 +1153,118 @@ with col_upload_top:
                 valid_upload_count = int(p_df[m_code_col].apply(is_valid_asset_code).sum()) if not p_df.empty else 0
                 st.success(f"🎯 คอลัมน์รหัส: **'{m_code_col}'** | พบข้อมูลถูกต้อง **{valid_upload_count:,}** รายการ")
 
-                if st.button("🚀 ยืนยันบันทึกขึ้น Cloud ทันที", type="primary", use_container_width=True, key="btn_confirm_upload_top"):
-                    upload_dict = {}
-                    clean_upload_year = str(upload_year).strip()
-                    for _, r in p_df.iterrows():
-                        c_val = str(r[m_code_col]).strip()
-                        if not is_valid_asset_code(c_val):
-                            continue
-                        r_data = {str(k): ("" if pd.isna(v) else str(v).strip()) for k, v in r.items()}
-                        upload_dict[c_val] = {
-                            "agency_id": active_agency,
-                            "fiscal_year": clean_upload_year,
-                            "asset_code": c_val,
-                            "row_data": r_data,
-                        }
+                # ตรวจสอบเงื่อนไขโควต้า 3 ปีงบประมาณ
+                is_valid_year_input = bool(clean_upload_year) and clean_upload_year != "รอการอัปโหลดไฟล์"
+                is_existing_cloud_year = clean_upload_year in cloud_uploaded_years
+                is_quota_blocked = (used_quota >= MAX_UPLOAD_YEARS) and (not is_existing_cloud_year)
 
-                    upload_rows = list(upload_dict.values())
-                    if upload_rows and supabase:
-                        progress_bar = st.progress(0, text="กำลังอัปโหลดข้อมูลขึ้น Cloud...")
-                        batch_size = 200
-                        total_batches = (len(upload_rows) + batch_size - 1) // batch_size
-                        for b_idx, i in enumerate(range(0, len(upload_rows), batch_size), start=1):
-                            supabase.table("agency_assets").upsert(
-                                upload_rows[i : i + batch_size],
-                                on_conflict="agency_id,fiscal_year,asset_code",
-                            ).execute()
-                            progress_bar.progress(
-                                b_idx / total_batches,
-                                text=f"อัปโหลดแล้ว {min(i + batch_size, len(upload_rows)):,}/{len(upload_rows):,} รายการ",
-                            )
+                if not is_valid_year_input:
+                    st.error("⚠️ กรุณาระบุปีงบประมาณให้ถูกต้อง (เช่น 2570)")
+                elif is_quota_blocked:
+                    st.error(
+                        f"🚫 ไม่สามารถเพิ่มปีงบประมาณ **{clean_upload_year}** ได้ เนื่องจากใช้โควต้าครบ "
+                        f"**{MAX_UPLOAD_YEARS}/{MAX_UPLOAD_YEARS} ปี** แล้ว ({stored_years_text}) — "
+                        f"กรุณาดาวน์โหลดไฟล์สำรองจากเมนู **📥 ส่งออก Excel** แล้วลบข้อมูลปีเก่าด้านล่างออกก่อนครับ"
+                    )
+                elif is_existing_cloud_year:
+                    st.info(
+                        f"ℹ️ ปีงบประมาณ **{clean_upload_year}** มีอยู่ในระบบแล้ว การบันทึกครั้งนี้จะเป็นการอัปเดตทับข้อมูลตั้งต้นเดิม (ไม่นับเพิ่มโควต้า)"
+                    )
 
-                        get_agency_years.clear()
-                        get_shared_data.clear()
-                        df_to_excel_bytes.clear()
-                        st.session_state.cloud_save_success_toast = True
-                        st.rerun()
+                if st.button(
+                    "🚀 ยืนยันบันทึกขึ้น Cloud ทันที",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_confirm_upload_top",
+                    disabled=(is_quota_blocked or not is_valid_year_input),
+                ):
+                    # ตรวจสอบโควต้าล่าสุดจากฐานข้อมูลจริงอีกครั้งก่อนบันทึก (ป้องกันอัปโหลดชนกัน)
+                    get_uploaded_cloud_years.clear()
+                    live_cloud_years = get_uploaded_cloud_years(active_agency)
+                    if len(live_cloud_years) >= MAX_UPLOAD_YEARS and clean_upload_year not in live_cloud_years:
+                        st.error(
+                            f"🚫 โควต้าจัดเก็บครบ {MAX_UPLOAD_YEARS} ปีงบประมาณแล้ว ({', '.join(live_cloud_years)}) "
+                            f"กรุณาลบข้อมูลปีเก่าก่อนอัปโหลดปีใหม่"
+                        )
                     else:
-                        st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
+                        upload_dict = {}
+                        for _, r in p_df.iterrows():
+                            c_val = str(r[m_code_col]).strip()
+                            if not is_valid_asset_code(c_val):
+                                continue
+                            r_data = {str(k): ("" if pd.isna(v) else str(v).strip()) for k, v in r.items()}
+                            upload_dict[c_val] = {
+                                "agency_id": active_agency,
+                                "fiscal_year": clean_upload_year,
+                                "asset_code": c_val,
+                                "row_data": r_data,
+                            }
+
+                        upload_rows = list(upload_dict.values())
+                        if upload_rows and supabase:
+                            progress_bar = st.progress(0, text="กำลังอัปโหลดข้อมูลขึ้น Cloud...")
+                            batch_size = 200
+                            total_batches = (len(upload_rows) + batch_size - 1) // batch_size
+                            for b_idx, i in enumerate(range(0, len(upload_rows), batch_size), start=1):
+                                supabase.table("agency_assets").upsert(
+                                    upload_rows[i : i + batch_size],
+                                    on_conflict="agency_id,fiscal_year,asset_code",
+                                ).execute()
+                                progress_bar.progress(
+                                    b_idx / total_batches,
+                                    text=f"อัปโหลดแล้ว {min(i + batch_size, len(upload_rows)):,}/{len(upload_rows):,} รายการ",
+                                )
+
+                            get_uploaded_cloud_years.clear()
+                            get_agency_years.clear()
+                            get_shared_data.clear()
+                            df_to_excel_bytes.clear()
+                            st.session_state.cloud_save_success_toast = True
+                            st.rerun()
+                        else:
+                            st.error("⚠️ ไม่พบข้อมูลรหัสครุภัณฑ์ที่ถูกต้องในไฟล์")
             except Exception as ex:
                 st.error(f"เกิดข้อผิดพลาดในการอ่านไฟล์: {ex}")
 
         st.markdown("<hr style='margin: 14px 0px;'>", unsafe_allow_html=True)
-        st.markdown("🧨 **ล้างข้อมูลทั้งปีงบประมาณ**")
-        confirm_pass = st.text_input(
-            f"กรอกรหัสผ่านเพื่อยืนยันการลบข้อมูลปี {year_key}",
-            type="password",
-            key="confirm_delete_pass",
+        st.markdown("🧨 **ล้างข้อมูลทั้งปีงบประมาณ (เพื่อคืนพื้นที่โควต้า)**")
+        st.caption("💡 แนะนำให้ไปที่เมนู **📥 ส่งออก Excel** เพื่อดาวน์โหลดไฟล์สำรองเก็บไว้ก่อนลบข้อมูลปีเก่า")
+
+        deletable_years = sorted(
+            set(cloud_uploaded_years) | ({year_key} if year_key != "รอการอัปโหลดไฟล์" else set()),
+            reverse=True,
         )
-        if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {year_key} ทั้งหมด", type="secondary", use_container_width=True):
-            if not confirm_pass:
-                st.warning("⚠️ กรุณากรอกรหัสผ่านก่อนกดยืนยัน")
-            elif year_key == "รอการอัปโหลดไฟล์":
-                st.warning("⚠️ ไม่มีข้อมูลปีงบประมาณให้ลบ")
-            else:
-                ok_pwd, _, err_pwd = authenticate_agency(active_agency, confirm_pass)
-                if ok_pwd:
-                    supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
-                    supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", year_key).execute()
-                    get_agency_years.clear()
-                    get_shared_data.clear()
-                    df_to_excel_bytes.clear()
-                    st.session_state.cloud_delete_success_toast = True
-                    st.rerun()
+        if not deletable_years:
+            st.caption("ยังไม่มีข้อมูลปีงบประมาณบน Cloud ให้ลบ")
+        else:
+            default_del_idx = deletable_years.index(year_key) if year_key in deletable_years else 0
+            delete_target_year = st.selectbox(
+                "เลือกปีงบประมาณที่ต้องการลบออกจาก Cloud",
+                options=deletable_years,
+                index=default_del_idx,
+                key="delete_target_year_select",
+            )
+            confirm_pass = st.text_input(
+                f"กรอกรหัสผ่านเพื่อยืนยันการลบข้อมูลปี {delete_target_year}",
+                type="password",
+                key="confirm_delete_pass",
+            )
+            if st.button(f"🗑️ ลบข้อมูลครุภัณฑ์ปี {delete_target_year} ทั้งหมด", type="secondary", use_container_width=True):
+                if not confirm_pass:
+                    st.warning("⚠️ กรุณากรอกรหัสผ่านก่อนกดยืนยัน")
                 else:
-                    st.error(err_pwd or "❌ รหัสผ่านไม่ถูกต้อง")
+                    ok_pwd, _, err_pwd = authenticate_agency(active_agency, confirm_pass)
+                    if ok_pwd:
+                        supabase.table("agency_assets").delete().eq("agency_id", active_agency).eq("fiscal_year", delete_target_year).execute()
+                        supabase.table("core_assetauditrecord").delete().eq("agency_id", active_agency).eq("fiscal_year", delete_target_year).execute()
+                        get_uploaded_cloud_years.clear()
+                        get_agency_years.clear()
+                        get_shared_data.clear()
+                        df_to_excel_bytes.clear()
+                        st.session_state.cloud_delete_success_toast = True
+                        st.rerun()
+                    else:
+                        st.error(err_pwd or "❌ รหัสผ่านไม่ถูกต้อง")
 
 # แสดงแจ้งเตือน Popup / Toast
 if st.session_state.pop("cloud_save_success_toast", False):
@@ -1256,7 +1349,7 @@ if other_summary:
     st.caption("📋 สภาพอื่นๆ ที่มีผลการตรวจแล้ว: " + " | ".join(other_summary))
 
 if total_items == 0:
-    st.info("ℹ️ ยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า / ล้างข้อมูลบัญชีครุภัณฑ์ (Excel)'** ด้านบนครับ")
+    st.info("ℹ️ ยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า / ล้างข้อมูลบัญชีครุภัณฑ์'** ด้านบนครับ")
 
 # เมนูนำทางเรียงตามลำดับเดิม
 selected_menu = st.radio(
@@ -1295,7 +1388,7 @@ if selected_menu == M_SEARCH:
                 st.session_state.open_search_scanner = False
                 st.session_state.trigger_search_qr_popup = True
 
-# จุดที่ 1: แถบค้นหา + กล้องสแกน QR Code (ตอนเปิดกล้อง ปุ่มปิดกล้องและกล้องจะอยู่ติดกันด้านบนสุด)
+    # จุดที่ 1: แถบค้นหา + กล้องสแกน QR Code (ตอนเปิดกล้อง ปุ่มปิดกล้องและกล้องจะอยู่ติดกันด้านบนสุด)
     if st.session_state.open_search_scanner:
         with st.container(border=True):
             st.button(
@@ -1340,6 +1433,7 @@ if selected_menu == M_SEARCH:
         status_filter = st.selectbox("กรองสถานะการตรวจ", ["ทั้งหมด"] + STATUS_OPTIONS, key="filter_main_1")
     with col_s4:
         inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
+
     display_df = valid_df.copy()
 
     if status_filter != "ทั้งหมด":
@@ -1430,16 +1524,14 @@ if selected_menu == M_SEARCH:
                         else:
                             st.session_state.admin_scan_popup = (False, f"❌ ไม่พบรหัส '{clean_code}' ในปีงบประมาณนี้")
 
-                    # ป้องกันกรณีเปลี่ยนปีงบประมาณแล้วค่าเดิมใน selectbox ไม่อยู่ในรายการใหม่
                     if st.session_state.get("cloud_edit_item_select") not in asset_list:
                         st.session_state.cloud_edit_item_select = asset_list[0]
 
-                    # แสดงป๊อปอัพผลการสแกนในโหมดแก้ไข
                     admin_popup = st.session_state.pop("admin_scan_popup", None)
                     if admin_popup:
                         show_1sec_popup(admin_popup[1], is_success=admin_popup[0])
 
-# จุดที่ 2: ปุ่มค้นหาด้วยสแกน QR Code ใต้ "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม"
+                    # จุดที่ 2: ปุ่มค้นหาด้วยสแกน QR Code ใต้ "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม"
                     if st.session_state.open_admin_scanner:
                         with st.container(border=True):
                             st.button(
@@ -1531,6 +1623,7 @@ if selected_menu == M_SEARCH:
 
                         if delete_item:
                             if delete_asset_from_supabase(edit_target, current_year_key, active_agency):
+                                get_uploaded_cloud_years.clear()
                                 get_shared_data.clear()
                                 df_to_excel_bytes.clear()
                                 st.session_state.cloud_delete_success_toast = True
