@@ -1450,22 +1450,21 @@ if selected_menu == M_SEARCH:
                     if admin_popup:
                         show_1sec_popup(admin_popup[1], is_success=admin_popup[0])
 
-                    # จุดที่ 2: ปุ่มค้นหาด้วยสแกน QR Code ใต้ "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม" เหนือช่องเลือกหมายเลขครุภัณฑ์
-                    col_adm_qr, col_adm_quick = st.columns([1.8, 3.2])
-                    with col_adm_qr:
-                        admin_qr_btn_text = (
-                            "❌ ปิดกล้องสแกน QR Code"
-                            if st.session_state.open_admin_scanner
-                            else "📷 ค้นหาด้วยสแกน QR Code"
-                        )
-                        st.button(
-                            admin_qr_btn_text,
-                            key="btn_toggle_admin_qr",
-                            type="primary" if not st.session_state.open_admin_scanner else "secondary",
-                            use_container_width=True,
-                            on_click=toggle_admin_scanner,
-                        )
-                    with col_adm_quick:
+# จุดที่ 2: ปุ่มค้นหาด้วยสแกน QR Code ใต้ "✏️ แก้ไขข้อมูลครุภัณฑ์เดิม"
+                    if st.session_state.open_admin_scanner:
+                        with st.container(border=True):
+                            st.button(
+                                "❌ ปิดกล้องสแกน QR Code",
+                                key="btn_toggle_admin_qr",
+                                type="secondary",
+                                use_container_width=True,
+                                on_click=toggle_admin_scanner,
+                            )
+                            render_auto_submit_qr_scanner(
+                                target_aria_label="สแกนหรือพิมพ์รหัสครุภัณฑ์เพื่อเลือกแก้ไขด่วน",
+                                submit_button_text="",
+                                reader_id="qr-reader-admin-edit",
+                            )
                         st.text_input(
                             "สแกนหรือพิมพ์รหัสครุภัณฑ์เพื่อเลือกแก้ไขด่วน",
                             placeholder="สแกน QR Code หรือพิมพ์รหัสครุภัณฑ์แล้วกด Enter เพื่อเลือกด่วน...",
@@ -1474,13 +1473,25 @@ if selected_menu == M_SEARCH:
                             on_change=on_admin_edit_scan,
                             args=(asset_list,),
                         )
-
-                    if st.session_state.open_admin_scanner:
-                        render_auto_submit_qr_scanner(
-                            target_aria_label="สแกนหรือพิมพ์รหัสครุภัณฑ์เพื่อเลือกแก้ไขด่วน",
-                            submit_button_text="",
-                            reader_id="qr-reader-admin-edit",
-                        )
+                    else:
+                        col_adm_qr, col_adm_quick = st.columns([1.8, 3.2])
+                        with col_adm_qr:
+                            st.button(
+                                "📷 ค้นหาด้วยสแกน QR Code",
+                                key="btn_toggle_admin_qr",
+                                type="primary",
+                                use_container_width=True,
+                                on_click=toggle_admin_scanner,
+                            )
+                        with col_adm_quick:
+                            st.text_input(
+                                "สแกนหรือพิมพ์รหัสครุภัณฑ์เพื่อเลือกแก้ไขด่วน",
+                                placeholder="สแกน QR Code หรือพิมพ์รหัสครุภัณฑ์แล้วกด Enter เพื่อเลือกด่วน...",
+                                key="admin_edit_scan_box",
+                                label_visibility="collapsed",
+                                on_change=on_admin_edit_scan,
+                                args=(asset_list,),
+                            )
 
                     edit_target = st.selectbox(
                         f"เลือกหมายเลขครุภัณฑ์ ({target_column})",
