@@ -1295,21 +1295,38 @@ if selected_menu == M_SEARCH:
                 st.session_state.open_search_scanner = False
                 st.session_state.trigger_search_qr_popup = True
 
-    # จุดที่ 1: แถบค้นหา 5 คอลัมน์สมดุล (เพิ่มปุ่มสแกน QR Code ด้านซ้ายสุด)
-    col_s0, col_s1, col_s2, col_s3, col_s4 = st.columns([1.25, 1.55, 1.15, 1.1, 1.1])
-    with col_s0:
-        st.markdown(
-            "<div style='font-size: 14px; color: #31333F; margin-bottom: 5px; line-height: 1.5;'>ค้นหาด้วยสแกน QR Code:</div>",
-            unsafe_allow_html=True,
-        )
-        search_qr_btn_text = "❌ ปิดกล้อง" if st.session_state.open_search_scanner else "📷 สแกน QR Code"
-        st.button(
-            search_qr_btn_text,
-            key="btn_toggle_search_qr",
-            type="primary" if not st.session_state.open_search_scanner else "secondary",
-            use_container_width=True,
-            on_click=toggle_search_scanner,
-        )
+# จุดที่ 1: แถบค้นหา + กล้องสแกน QR Code (ตอนเปิดกล้อง ปุ่มปิดกล้องและกล้องจะอยู่ติดกันด้านบนสุด)
+    if st.session_state.open_search_scanner:
+        with st.container(border=True):
+            st.button(
+                "❌ ปิดกล้องสแกน QR Code",
+                key="btn_toggle_search_qr",
+                type="secondary",
+                use_container_width=True,
+                on_click=toggle_search_scanner,
+            )
+            st.caption("📷 ส่องกล้องไปที่ป้าย QR Code เพื่อกรองแสดงข้อมูลครุภัณฑ์ในตารางทันที")
+            render_auto_submit_qr_scanner(
+                target_aria_label="พิมพ์ค้นหา:",
+                submit_button_text="",
+                reader_id="qr-reader-search",
+            )
+        col_s1, col_s2, col_s3, col_s4 = st.columns([1.6, 1.15, 1.1, 1.15])
+    else:
+        col_s0, col_s1, col_s2, col_s3, col_s4 = st.columns([1.25, 1.55, 1.15, 1.1, 1.1])
+        with col_s0:
+            st.markdown(
+                "<div style='font-size: 14px; color: #31333F; margin-bottom: 5px; line-height: 1.5;'>ค้นหาด้วยสแกน QR Code:</div>",
+                unsafe_allow_html=True,
+            )
+            st.button(
+                "📷 สแกน QR Code",
+                key="btn_toggle_search_qr",
+                type="primary",
+                use_container_width=True,
+                on_click=toggle_search_scanner,
+            )
+
     with col_s1:
         search_query = st.text_input(
             "พิมพ์ค้นหา:",
