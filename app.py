@@ -1201,11 +1201,20 @@ if selected_menu == M_SEARCH:
 
     display_df = valid_df.copy()
 
-    # เชื่อมการกรองจากช่อง "📋 สภาพอื่นๆ" ด้านบนเหมือนเดิม
-    if selected_top_other != "เลือกดูสภาพ...":
-        display_df = display_df[display_df["สภาพครุภัณฑ์"] == selected_top_other]
-        st.caption(f"🔎 กำลังกรองตามช่องสภาพอื่นๆ ด้านบน: **{selected_top_other}**")
-
+    if status_filter != "ทั้งหมด":
+        display_df = display_df[display_df["สถานะการตรวจ"] == status_filter]
+    if condition_filter != "ทั้งหมด":
+        display_df = display_df[display_df["สภาพครุภัณฑ์"] == condition_filter]
+    if inspector_filter:
+        display_df = display_df[
+            display_df["ผู้ตรวจ"].astype(str).str.contains(inspector_filter, case=False, na=False, regex=False)
+        ]
+    if search_query:
+        display_df = display_df[
+            display_df.astype(str)
+            .apply(lambda col: col.str.contains(search_query, case=False, na=False, regex=False))
+            .any(axis=1)
+        ]
     if status_filter != "ทั้งหมด":
         display_df = display_df[display_df["สถานะการตรวจ"] == status_filter]
     if condition_filter != "ทั้งหมด":
