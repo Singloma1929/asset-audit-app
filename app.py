@@ -27,6 +27,12 @@ st.set_page_config(
 THAI_TZ = timezone(timedelta(hours=7))
 HEADER_ROW_DEFAULT = 4
 
+# ชื่อเมนูเรียงตามลำดับเดิม
+M_SEARCH = "🔍 ค้นหา / แก้ไข"
+M_AUDIT = "📷 ตรวจนับ / บันทึก"
+M_QR = "🏷️ สร้าง QR Code"
+M_EXPORT = "📥 ส่งออก Excel"
+
 CONDITION_OPTIONS = [
     "ปกติ",
     "ชำรุด/เสียหาย",
@@ -129,7 +135,7 @@ st.markdown("""
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
     }
     @media (max-width: 900px) {
         .kpi-grid {
@@ -149,6 +155,7 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         justify-content: center;
+        min-height: 76px;
     }
     .kpi-label {
         font-size: 12px;
@@ -215,9 +222,9 @@ st.markdown("""
     }
 
     /* 🟢 ปุ่มเมนูนำทาง st.radio ให้แตะง่ายและตัดบรรทัดสวยบนมือถือ */
-    div.row-widget.stRadio > div[role="radiogroup"] {
+    [data-testid="stRadio"] > div[role="radiogroup"] {
         background-color: #f8fafc;
-        padding: 8px;
+        padding: 8px 12px;
         border-radius: 12px;
         border: 1px solid #cbd5e1;
         display: flex;
@@ -225,7 +232,7 @@ st.markdown("""
         gap: 6px;
         justify-content: space-around;
     }
-    div.row-widget.stRadio div[role="radiogroup"] label {
+    [data-testid="stRadio"] div[role="radiogroup"] label {
         padding: 6px 10px;
         border-radius: 8px;
         margin: 0 !important;
@@ -233,14 +240,7 @@ st.markdown("""
         display: flex;
         align-items: center;
     }
-    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div {
-        background-color: #16a34a !important;
-        border-color: #16a34a !important;
-    }
-    div.row-widget.stRadio div[role="radiogroup"] label input:checked + div::after {
-        background-color: #ffffff !important;
-    }
-    div.row-widget.stRadio div[role="radiogroup"] label:has(input:checked) p {
+    [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p {
         color: #15803d !important;
         font-weight: 800 !important;
     }
@@ -294,7 +294,7 @@ def now_thai() -> datetime:
     return datetime.now(THAI_TZ)
 
 def hash_password(plain_password: str) -> str:
-    """เข้ารหัสรหัสผ่านด้วย PBKDF2-HMAC-SHA256 (ไม่ต้องติดตั้งไลบรารีเสริม)"""
+    """เข้ารหัสรหัสผ่านด้วย PBKDF2-HMAC-SHA256"""
     iterations = 120_000
     salt = os.urandom(16)
     dk = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt, iterations)
@@ -315,7 +315,6 @@ def verify_password(plain_password: str, stored_password: str) -> tuple[bool, bo
             return hmac.compare_digest(dk.hex(), hash_hex), False
         except Exception:
             return False, False
-    # รองรับบัญชีเดิมที่ยังเก็บเป็น plain text เพื่อไม่ให้ผู้ใช้เดิมล็อกอินไม่ได้
     is_match = hmac.compare_digest(plain_password, stored)
     return is_match, is_match
 
@@ -327,7 +326,6 @@ def authenticate_agency(agency_code: str, password: str) -> tuple[bool, str, str
     if not code_in or not pass_in:
         return False, "", "⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน"
 
-    # ตรวจสอบบัญชี Admin จาก st.secrets (หากตั้งค่าไว้)
     if DEFAULT_ADMIN_CODE and DEFAULT_ADMIN_PASSWORD:
         if code_in == DEFAULT_ADMIN_CODE and hmac.compare_digest(pass_in, DEFAULT_ADMIN_PASSWORD):
             return True, DEFAULT_ADMIN_NAME, ""
@@ -351,7 +349,6 @@ def authenticate_agency(agency_code: str, password: str) -> tuple[bool, str, str
         if not is_valid:
             return False, "", "❌ รหัสผ่านไม่ถูกต้อง"
 
-        # อัปเกรดรหัสผ่าน plain-text เดิมให้เป็น Hash อัตโนมัติแบบเงียบๆ
         if needs_upgrade:
             try:
                 supabase.table("agencies").update(
@@ -413,7 +410,6 @@ def parse_excel_dataframe(raw_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
 
     if header_idx + 1 < len(raw_df):
         next_row = raw_df.iloc[header_idx + 1].fillna("").astype(str).str.strip().tolist()
-        # ตรวจสอบว่าแถวถัดไปเป็นหัวตารางย่อย (ไม่มีตัวเลขในคอลัมน์รหัส และมีข้อความ)
         tentative_code_idx = next(
             (i for i, c in enumerate(top_cols) if any(k in c for k in ["หมายเลขครุภัณฑ์", "รหัส", "เลข"])),
             0,
@@ -441,7 +437,6 @@ def parse_excel_dataframe(raw_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
         ]
         data_start = header_idx + 1
 
-    # ป้องกันชื่อคอลัมน์ซ้ำกัน
     seen = {}
     unique_cols = []
     for c in combined_columns:
@@ -531,7 +526,6 @@ def get_shared_data(fiscal_year_str: str, agency_id: str) -> tuple[pd.DataFrame,
 
     df = None
 
-    # 1. ดึงข้อมูลตั้งต้นจาก agency_assets (ครบทุกแถวด้วย Pagination)
     if supabase:
         try:
             asset_rows = fetch_all_rows(
@@ -552,7 +546,6 @@ def get_shared_data(fiscal_year_str: str, agency_id: str) -> tuple[pd.DataFrame,
         except Exception:
             df = None
 
-    # 2. Fallback ไฟล์ Excel ในระบบ (เฉพาะ cgduthai / default_agency)
     if df is None:
         if agency_id in {"cgduthai", "default_agency"}:
             if year_key in {"2568", "2569"}:
@@ -582,7 +575,6 @@ def get_shared_data(fiscal_year_str: str, agency_id: str) -> tuple[pd.DataFrame,
 
     df = df.fillna("-").astype(str).replace({"nan": "-", "None": "-", "": "-"})
 
-    # 3. ดึงผลการตรวจและ Merge แบบ Dictionary O(N) (เร็วกว่า .loc loop หลายสิบเท่า)
     if supabase:
         try:
             saved_data = fetch_all_rows(
@@ -752,14 +744,12 @@ def delete_asset_from_supabase(asset_code: str, fiscal_year: str, agency_id: str
 
 @st.cache_data(ttl=120, show_spinner=False)
 def df_to_excel_bytes(export_df: pd.DataFrame) -> bytes:
-    """แคชไฟล์ Excel ไม่ให้สร้างซ้ำทุกครั้งที่คลิก UI"""
     buf = BytesIO()
     export_df.to_excel(buf, index=False, engine="openpyxl")
     return buf.getvalue()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def generate_qr_label_png(asset_code: str, base_url: str) -> bytes:
-    """สร้างป้าย QR Code พร้อมปรับความกว้างอัตโนมัติไม่ให้รหัสตกขอบ"""
     qr_payload = f"{base_url}?scan={asset_code}"
     qr = qrcode.QRCode(version=1, box_size=12, border=2)
     qr.add_data(qr_payload)
@@ -971,7 +961,6 @@ with st.sidebar:
         st.rerun()
 
     if st.button("🚪 ออกจากระบบ (Logout)", type="secondary", use_container_width=True):
-        # ล้าง Session ทั้งหมดป้องกันข้อมูลค้างข้ามหน่วยงาน
         st.session_state.clear()
         st.rerun()
 
@@ -995,7 +984,7 @@ if scanned_param:
     st.session_state.active_search_query = clean_scan
     st.session_state.open_scanner = False
     st.session_state.trigger_popup_check = True
-    st.session_state.nav_menu_radio = "📷 ตรวจนับ / บันทึก"
+    st.session_state.nav_menu_radio = M_AUDIT
     st.query_params.clear()
 
 # แถวเลือกปีงบประมาณ + จัดการไฟล์ Excel
@@ -1059,7 +1048,10 @@ with col_upload_top:
                                 upload_rows[i : i + batch_size],
                                 on_conflict="agency_id,fiscal_year,asset_code",
                             ).execute()
-                            progress_bar.progress(b_idx / total_batches, text=f"อัปโหลดแล้ว {min(i + batch_size, len(upload_rows)):,}/{len(upload_rows):,} รายการ")
+                            progress_bar.progress(
+                                b_idx / total_batches,
+                                text=f"อัปโหลดแล้ว {min(i + batch_size, len(upload_rows)):,}/{len(upload_rows):,} รายการ",
+                            )
 
                         get_agency_years.clear()
                         get_shared_data.clear()
@@ -1135,22 +1127,45 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Responsive KPI Cards (ดูง่ายทั้งมือถือและคอมพิวเตอร์)
-st.markdown(
-    f"""
-    <div class="kpi-grid">
-        <div class="kpi-card kpi-blue"><div class="kpi-label">📦 ทั้งหมด</div><div class="kpi-val">{total_items:,}</div></div>
-        <div class="kpi-card kpi-green"><div class="kpi-label">✔️ ตรวจแล้ว</div><div class="kpi-val">{checked_items:,}</div></div>
-        <div class="kpi-card kpi-amber"><div class="kpi-label">⏳ ยังไม่ตรวจ</div><div class="kpi-val">{unchecked_items:,}</div></div>
-        <div class="kpi-card kpi-green"><div class="kpi-label">✅ สภาพปกติ</div><div class="kpi-val">{normal_count:,}</div></div>
-        <div class="kpi-card kpi-red"><div class="kpi-label">⚠️ ชำรุด/เสียหาย</div><div class="kpi-val">{damaged_count:,}</div></div>
-        <div class="kpi-card"><div class="kpi-label">📦 หมดความจำเป็น</div><div class="kpi-val">{obsolete_count:,}</div></div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
+# 1. แถบ KPI 6 กล่อง + ช่อง "📋 สภาพอื่นๆ" แบบเดิมอยู่แถวเดียวกัน
 other_conditions = CONDITION_OPTIONS[3:]
+col_kpis, col_other_cond = st.columns([6, 1.6])
+
+with col_kpis:
+    st.markdown(
+        f"""
+        <div class="kpi-grid">
+            <div class="kpi-card kpi-blue"><div class="kpi-label">📦 ทั้งหมด</div><div class="kpi-val">{total_items:,}</div></div>
+            <div class="kpi-card kpi-green"><div class="kpi-label">✔️ ตรวจแล้ว</div><div class="kpi-val">{checked_items:,}</div></div>
+            <div class="kpi-card kpi-amber"><div class="kpi-label">⏳ ยังไม่ตรวจ</div><div class="kpi-val">{unchecked_items:,}</div></div>
+            <div class="kpi-card kpi-green"><div class="kpi-label">✅ สภาพปกติ</div><div class="kpi-val">{normal_count:,}</div></div>
+            <div class="kpi-card kpi-red"><div class="kpi-label">⚠️ ชำรุด/เสียหาย</div><div class="kpi-val">{damaged_count:,}</div></div>
+            <div class="kpi-card"><div class="kpi-label">📦 หมดความจำเป็น</div><div class="kpi-val">{obsolete_count:,}</div></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with col_other_cond:
+    selected_top_other = st.selectbox(
+        "📋 สภาพอื่นๆ",
+        ["เลือกดูสภาพ..."] + other_conditions,
+        key="top_other_metric_dropdown",
+        label_visibility="visible",
+    )
+    if selected_top_other != "เลือกดูสภาพ...":
+        other_count = int(cond_counts.get(selected_top_other, 0))
+        st.markdown(
+            f"<div style='font-size: 14px; font-weight: 700; color: #1d4ed8; text-align: center; margin-top: -10px;'>"
+            f"จำนวน: {other_count:,} รายการ</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            "<div style='font-size: 12px; color: #64748b; text-align: center; margin-top: -10px;'>เลือกดูจำนวน</div>",
+            unsafe_allow_html=True,
+        )
+
 other_summary = [f"{c}: **{cond_counts.get(c, 0):,}**" for c in other_conditions if cond_counts.get(c, 0) > 0]
 if other_summary:
     st.caption("📋 สภาพอื่นๆ ที่มีผลการตรวจแล้ว: " + " | ".join(other_summary))
@@ -1158,15 +1173,10 @@ if other_summary:
 if total_items == 0:
     st.info("ℹ️ ยังไม่มีข้อมูลครุภัณฑ์ในระบบ กรุณากดปุ่ม **'📤 นำเข้า / ล้างข้อมูลบัญชีครุภัณฑ์ (Excel)'** ด้านบนครับ")
 
-# เมนูนำทาง (ชื่อกระชับ กดง่ายบนมือถือ)
-m_audit = "📷 ตรวจนับ / บันทึก"
-m_search = "🔍 ค้นหา / แก้ไข"
-m_qr = "🏷️ สร้าง QR"
-m_export = "📥 ส่งออก Excel"
-
+# 2. เมนูนำทางเรียงตามลำดับเดิม: ค้นหา/แก้ไข -> ตรวจนับ/บันทึก -> สร้าง QR Code -> ส่งออก Excel
 selected_menu = st.radio(
     "เลือกเมนู:",
-    options=[m_audit, m_search, m_qr, m_export],
+    options=[M_SEARCH, M_AUDIT, M_QR, M_EXPORT],
     horizontal=True,
     label_visibility="collapsed",
     key="nav_menu_radio",
@@ -1174,219 +1184,9 @@ selected_menu = st.radio(
 st.markdown("<hr style='margin: 8px 0px 14px 0px;'>", unsafe_allow_html=True)
 
 # =========================================================
-# ================= MENU 1: ตรวจนับ / บันทึก =================
+# ================= MENU 1: ค้นหา / แก้ไข =================
 # =========================================================
-if selected_menu == m_audit:
-    # จัดการสถานะช่องค้นหาก่อนสร้าง widget เพื่อหลีกเลี่ยง StreamlitAPIException
-    if st.session_state.pop("pending_clear_scan", False):
-        st.session_state.scanned_asset_box = ""
-        st.session_state.active_search_query = ""
-    if "pending_scan_value" in st.session_state:
-        st.session_state.scanned_asset_box = st.session_state.pop("pending_scan_value")
-
-    if "open_scanner" not in st.session_state:
-        st.session_state.open_scanner = False
-    if "continuous_scan" not in st.session_state:
-        st.session_state.continuous_scan = False
-    if "last_inspector" not in st.session_state:
-        st.session_state.last_inspector = ""
-
-    def on_asset_input_change():
-        raw_val = st.session_state.get("scanned_asset_box", "").strip()
-        if raw_val:
-            clean_code = extract_scan_code(raw_val)
-            st.session_state.scanned_asset_box = clean_code
-            st.session_state.active_search_query = clean_code
-            st.session_state.open_scanner = False
-            st.session_state.trigger_popup_check = True
-
-    col_scan, col_result = st.columns([5, 7], gap="medium")
-
-    with col_scan:
-        with st.container(border=True):
-            st.markdown("##### 📷 สแกน QR หรือค้นหารหัสครุภัณฑ์")
-
-            btn_label = "❌ ปิดกล้องสแกน" if st.session_state.open_scanner else "📷 เปิดกล้องสแกน QR Code"
-            if st.button(
-                btn_label,
-                use_container_width=True,
-                type="primary" if not st.session_state.open_scanner else "secondary",
-            ):
-                st.session_state.open_scanner = not st.session_state.open_scanner
-                st.rerun()
-
-            if st.session_state.open_scanner:
-                render_auto_submit_qr_scanner()
-
-            scanned_code_input = st.text_input(
-                "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
-                key="scanned_asset_box",
-                placeholder="สแกน QR หรือพิมพ์เลขครุภัณฑ์ / ชื่อรายการ...",
-                on_change=on_asset_input_change,
-            )
-
-            c_find, c_clear = st.columns([2, 1])
-            with c_find:
-                search_clicked = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
-            with c_clear:
-                if st.button("🧹 ล้าง", key="btn_clear_mid", use_container_width=True):
-                    st.session_state.pending_clear_scan = True
-                    st.rerun()
-
-            st.checkbox(
-                "🔄 โหมดเดินตรวจต่อเนื่อง (บันทึกแล้วเปิดกล้องสแกนชิ้นถัดไปอัตโนมัติ)",
-                key="continuous_scan",
-            )
-
-    if search_clicked and scanned_code_input.strip():
-        clean_code = extract_scan_code(scanned_code_input)
-        st.session_state.active_search_query = clean_code
-        st.session_state.open_scanner = False
-        st.session_state.trigger_popup_check = True
-
-    current_query = st.session_state.get("active_search_query", "")
-
-    with col_result:
-        if not current_query:
-            with st.container(border=True):
-                st.info("👆 กด **เปิดกล้องสแกน QR Code** หรือพิมพ์หมายเลขครุภัณฑ์เพื่อเริ่มบันทึกผลการตรวจ")
-        else:
-            search_term = extract_scan_code(current_query)
-            # ค้นหาแบบตรงเป๊ะก่อน แล้วค่อยค้นหาแบบบางส่วน
-            exact_match = valid_df[valid_df[target_column].astype(str).str.strip().str.lower() == search_term.lower()]
-            if not exact_match.empty:
-                matched_mob = exact_match
-            else:
-                matched_mob = valid_df[
-                    valid_df[target_column].astype(str).str.contains(search_term, case=False, na=False, regex=False)
-                ]
-            if matched_mob.empty:
-                matched_mob = valid_df[
-                    valid_df.astype(str)
-                    .apply(lambda col: col.str.contains(search_term, case=False, na=False, regex=False))
-                    .any(axis=1)
-                ]
-
-            if st.session_state.pop("trigger_popup_check", False):
-                if not matched_mob.empty:
-                    show_1sec_popup("✅ ค้นพบข้อมูลครุภัณฑ์", is_success=True)
-                else:
-                    show_1sec_popup("❌ ไม่พบข้อมูล / QR ไม่ถูกต้อง", is_success=False)
-
-            if matched_mob.empty:
-                st.warning(f"⚠️ ไม่พบครุภัณฑ์ที่ตรงกับคำค้นหา **'{search_term}'** ในปีงบประมาณ {selected_fiscal_year}")
-            else:
-                # หากพบหลายรายการ ให้เลือกชิ้นที่ต้องการได้ทันที
-                if len(matched_mob) > 1:
-                    st.info(f"🎯 พบ {len(matched_mob):,} รายการที่ใกล้เคียง เลือกรหัสที่ต้องการด้านล่าง:")
-                    pick_code = st.selectbox(
-                        "เลือกรายการครุภัณฑ์:",
-                        options=matched_mob[target_column].tolist(),
-                        key="multi_match_picker",
-                    )
-                    target_row_data = matched_mob[matched_mob[target_column] == pick_code].iloc[0]
-                else:
-                    target_row_data = matched_mob.iloc[0]
-
-                mob_target = str(target_row_data[target_column]).strip()
-
-                with st.container(border=True):
-                    st.markdown(
-                        f"#### 📝 รหัส: <span style='color:#1d4ed8;'>{html.escape(mob_target)}</span>",
-                        unsafe_allow_html=True,
-                    )
-                    render_status_badge(
-                        target_row_data["สถานะการตรวจ"],
-                        target_row_data["สภาพครุภัณฑ์"],
-                        target_row_data["ผู้ตรวจ"],
-                    )
-                    st.markdown(
-                        f"**รายการ:** {html.escape(str(target_row_data.get('รายการ', '-')))}  \n"
-                        f"**สถานที่/อยู่ที่:** {html.escape(str(target_row_data.get('อยู่ที่', '-')))}"
-                    )
-
-                    cur_cond = str(target_row_data["สภาพครุภัณฑ์"]).strip()
-                    default_cond_idx = CONDITION_OPTIONS.index(cur_cond) if cur_cond in CONDITION_OPTIONS else 0
-
-                    cur_status = str(target_row_data["สถานะการตรวจ"]).strip()
-                    # หากยังไม่ตรวจ ให้ตั้งค่าเริ่มต้นในฟอร์มเป็น "ตรวจแล้ว" เพื่อให้กดบันทึกได้ทันทีในคลิกเดียว
-                    default_status_idx = 0
-
-                    cur_note = str(target_row_data["หมายเหตุ"]).strip()
-                    if cur_note in {"-", "nan", "None"}:
-                        cur_note = ""
-
-                    cur_insp = str(target_row_data["ผู้ตรวจ"]).strip()
-                    if cur_insp in {"-", "nan", "None", ""}:
-                        cur_insp = st.session_state.get("last_inspector", "")
-
-                    with st.form(key=f"audit_form_{mob_target}", border=False):
-                        fc1, fc2 = st.columns(2)
-                        with fc1:
-                            mob_condition = st.selectbox("1. สภาพครุภัณฑ์", CONDITION_OPTIONS, index=default_cond_idx)
-                        with fc2:
-                            mob_status = st.selectbox("2. สถานะการตรวจ", STATUS_OPTIONS, index=default_status_idx)
-
-                        fc3, fc4 = st.columns(2)
-                        with fc3:
-                            mob_inspector = st.text_input("3. ผู้ตรวจ (ระบบจำชื่อให้ครั้งถัดไป)", value=cur_insp)
-                        with fc4:
-                            mob_note = st.text_input("4. หมายเหตุ (เพิ่มเติม)", value=cur_note)
-
-                        mob_submit = st.form_submit_button(
-                            "💾 บันทึกผลการตรวจทันที",
-                            type="primary",
-                            use_container_width=True,
-                        )
-                        render_save_status_badge(
-                            target_row_data["สถานะการตรวจ"],
-                            target_row_data["วันเดือนปี เวลา ที่ทำการตรวจสอบ"],
-                        )
-
-                        if mob_submit:
-                            current_time = now_thai().strftime("%d/%m/%Y %H:%M:%S")
-                            clean_insp = mob_inspector.strip()
-                            if clean_insp:
-                                st.session_state.last_inspector = clean_insp
-
-                            if mob_status == "ยังไม่ตรวจ":
-                                m_cond, m_stat, m_insp, m_time = "-", "ยังไม่ตรวจ", "-", "-"
-                            else:
-                                m_cond = mob_condition
-                                m_stat = mob_status
-                                m_insp = clean_insp if clean_insp else "-"
-                                m_time = current_time
-
-                            m_note = mob_note.strip() if mob_note.strip() else "-"
-
-                            ok = save_progress_to_supabase(
-                                asset_code=mob_target,
-                                condition=m_cond,
-                                status=m_stat,
-                                note=m_note,
-                                inspector=m_insp,
-                                timestamp=m_time,
-                                fiscal_year=current_year_key,
-                                agency_id=active_agency,
-                            )
-                            if ok:
-                                get_shared_data.clear()
-                                df_to_excel_bytes.clear()
-                                st.session_state.flash_success_msg = f"บันทึก {mob_target} ({m_cond}) เรียบร้อยแล้ว!"
-                                if st.session_state.continuous_scan:
-                                    st.session_state.pending_clear_scan = True
-                                    st.session_state.open_scanner = True
-                                else:
-                                    st.session_state.open_scanner = False
-                                st.rerun()
-
-                with st.expander("📋 ดูรายละเอียดคอลัมน์ทั้งหมดของรายการนี้"):
-                    st.dataframe(matched_mob, use_container_width=True)
-
-# =========================================================
-# ================= MENU 2: ค้นหา / แก้ไข =================
-# =========================================================
-elif selected_menu == m_search:
+if selected_menu == M_SEARCH:
     st.subheader(f"🔍 ค้นหาและจัดการข้อมูลครุภัณฑ์ ({selected_fiscal_year})")
 
     col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -1400,6 +1200,12 @@ elif selected_menu == m_search:
         inspector_filter = st.text_input("กรองผู้ตรวจ:", placeholder="ชื่อผู้ตรวจสอบ...", key="filter_inspector_main")
 
     display_df = valid_df.copy()
+
+    # เชื่อมการกรองจากช่อง "📋 สภาพอื่นๆ" ด้านบนเหมือนเดิม
+    if selected_top_other != "เลือกดูสภาพ...":
+        display_df = display_df[display_df["สภาพครุภัณฑ์"] == selected_top_other]
+        st.caption(f"🔎 กำลังกรองตามช่องสภาพอื่นๆ ด้านบน: **{selected_top_other}**")
+
     if status_filter != "ทั้งหมด":
         display_df = display_df[display_df["สถานะการตรวจ"] == status_filter]
     if condition_filter != "ทั้งหมด":
@@ -1545,9 +1351,221 @@ elif selected_menu == m_search:
                                 st.rerun()
 
 # =========================================================
+# ================= MENU 2: ตรวจนับ / บันทึก =================
+# =========================================================
+elif selected_menu == M_AUDIT:
+    st.subheader(f"📝 ตรวจครุภัณฑ์ / บันทึกผลการตรวจ ({selected_fiscal_year})")
+
+    if st.session_state.pop("pending_clear_scan", False):
+        st.session_state.scanned_asset_box = ""
+        st.session_state.active_search_query = ""
+    if "pending_scan_value" in st.session_state:
+        st.session_state.scanned_asset_box = st.session_state.pop("pending_scan_value")
+
+    if "open_scanner" not in st.session_state:
+        st.session_state.open_scanner = False
+    if "continuous_scan" not in st.session_state:
+        st.session_state.continuous_scan = False
+    if "last_inspector" not in st.session_state:
+        st.session_state.last_inspector = ""
+
+    def on_asset_input_change():
+        raw_val = st.session_state.get("scanned_asset_box", "").strip()
+        if raw_val:
+            clean_code = extract_scan_code(raw_val)
+            st.session_state.scanned_asset_box = clean_code
+            st.session_state.active_search_query = clean_code
+            st.session_state.open_scanner = False
+            st.session_state.trigger_popup_check = True
+
+    # ส่วนบน: กล่องสแกน QR และค้นหารหัสครุภัณฑ์
+    with st.container(border=True):
+        st.markdown("##### 🔎 สแกน QR Code หรือกรอกหมายเลขครุภัณฑ์")
+
+        btn_label = "❌ ปิดกล้องสแกน QR Code" if st.session_state.open_scanner else "📷 เปิดกล้องสแกน QR Code หมายเลขพัสดุ"
+        if st.button(
+            btn_label,
+            use_container_width=True,
+            type="primary" if not st.session_state.open_scanner else "secondary",
+        ):
+            st.session_state.open_scanner = not st.session_state.open_scanner
+            st.rerun()
+
+        if st.session_state.open_scanner:
+            render_auto_submit_qr_scanner()
+
+        scanned_code_input = st.text_input(
+            "กรอกหมายเลขครุภัณฑ์ เพื่อค้นหา",
+            key="scanned_asset_box",
+            placeholder="สแกน QR Code หรือพิมพ์เลขครุภัณฑ์ / ชื่อรายการ...",
+            on_change=on_asset_input_change,
+        )
+
+        c_find, c_clear, c_cont = st.columns([1.4, 1, 2.6])
+        with c_find:
+            search_clicked = st.button("🔍 ค้นหา", key="btn_search_mid", type="primary", use_container_width=True)
+        with c_clear:
+            if st.button("🧹 ล้างคำค้นหา", key="btn_clear_mid", use_container_width=True):
+                st.session_state.pending_clear_scan = True
+                st.rerun()
+        with c_cont:
+            st.checkbox(
+                "🔄 โหมดเดินตรวจต่อเนื่อง (บันทึกแล้วเปิดกล้องสแกนชิ้นถัดไปอัตโนมัติ)",
+                key="continuous_scan",
+            )
+
+    if search_clicked and scanned_code_input.strip():
+        clean_code = extract_scan_code(scanned_code_input)
+        st.session_state.active_search_query = clean_code
+        st.session_state.open_scanner = False
+        st.session_state.trigger_popup_check = True
+
+    current_query = st.session_state.get("active_search_query", "")
+
+    # 3. ส่วนล่าง: แสดงรายการที่ค้นหาเจอ + ฟอร์มบันทึกผลการตรวจด้านล่างฟังก์ชันค้นหาเหมือนเดิม
+    if not current_query:
+        st.info("👆 กด **เปิดกล้องสแกน QR Code** หรือพิมพ์หมายเลขครุภัณฑ์ด้านบนเพื่อค้นหาและบันทึกผลการตรวจ")
+    else:
+        search_term = extract_scan_code(current_query)
+        exact_match = valid_df[valid_df[target_column].astype(str).str.strip().str.lower() == search_term.lower()]
+        if not exact_match.empty:
+            matched_mob = exact_match
+        else:
+            matched_mob = valid_df[
+                valid_df[target_column].astype(str).str.contains(search_term, case=False, na=False, regex=False)
+            ]
+        if matched_mob.empty:
+            matched_mob = valid_df[
+                valid_df.astype(str)
+                .apply(lambda col: col.str.contains(search_term, case=False, na=False, regex=False))
+                .any(axis=1)
+            ]
+
+        if st.session_state.pop("trigger_popup_check", False):
+            if not matched_mob.empty:
+                show_1sec_popup("✅ ค้นพบข้อมูลครุภัณฑ์", is_success=True)
+            else:
+                show_1sec_popup("❌ ไม่พบข้อมูล / QR ไม่ถูกต้อง", is_success=False)
+
+        if matched_mob.empty:
+            st.warning(f"⚠️ ไม่พบครุภัณฑ์ที่ตรงกับคำค้นหา **'{search_term}'** ในปีงบประมาณ {selected_fiscal_year}")
+        else:
+            st.success(f"🎯 พบข้อมูลครุภัณฑ์ที่ตรงกับรหัส/คำค้นหา: **{len(matched_mob):,}** รายการ")
+
+            if len(matched_mob) > 1:
+                pick_code = st.selectbox(
+                    "เลือกรายการครุภัณฑ์ที่ต้องการบันทึกผล:",
+                    options=matched_mob[target_column].tolist(),
+                    key="multi_match_picker",
+                )
+                target_row_data = matched_mob[matched_mob[target_column] == pick_code].iloc[0]
+            else:
+                target_row_data = matched_mob.iloc[0]
+
+            mob_target = str(target_row_data[target_column]).strip()
+
+            with st.expander("📋 ดูรายละเอียดคอลัมน์ทั้งหมดของรายการนี้", expanded=False):
+                st.dataframe(matched_mob, use_container_width=True)
+
+            st.markdown(
+                f"### 📝 บันทึก / แก้ไขผลการตรวจสำหรับรหัส: <span style='color:#1d4ed8;'>{html.escape(mob_target)}</span>",
+                unsafe_allow_html=True,
+            )
+
+            with st.container(border=True):
+                col_info_badge, col_info_details = st.columns([1.5, 1.5])
+                with col_info_badge:
+                    st.markdown(
+                        f"<div style='font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #31333F;'>"
+                        f"สถานะปัจจุบัน ({html.escape(selected_fiscal_year)})</div>",
+                        unsafe_allow_html=True,
+                    )
+                    render_status_badge(
+                        target_row_data["สถานะการตรวจ"],
+                        target_row_data["สภาพครุภัณฑ์"],
+                        target_row_data["ผู้ตรวจ"],
+                    )
+                with col_info_details:
+                    st.markdown(f"**ชื่อรายการ:** {html.escape(str(target_row_data.get('รายการ', '-')))}")
+                    st.markdown(f"**สถานที่/อยู่ที่:** {html.escape(str(target_row_data.get('อยู่ที่', '-')))}")
+
+                cur_cond = str(target_row_data["สภาพครุภัณฑ์"]).strip()
+                default_cond_idx = CONDITION_OPTIONS.index(cur_cond) if cur_cond in CONDITION_OPTIONS else 0
+                default_status_idx = 0
+
+                cur_note = str(target_row_data["หมายเหตุ"]).strip()
+                if cur_note in {"-", "nan", "None"}:
+                    cur_note = ""
+
+                cur_insp = str(target_row_data["ผู้ตรวจ"]).strip()
+                if cur_insp in {"-", "nan", "None", ""}:
+                    cur_insp = st.session_state.get("last_inspector", "")
+
+                with st.form(key=f"audit_form_{mob_target}", border=False):
+                    mc1, mc2, mc3, mc4 = st.columns(4)
+                    with mc1:
+                        mob_condition = st.selectbox("1. สภาพครุภัณฑ์", CONDITION_OPTIONS, index=default_cond_idx)
+                    with mc2:
+                        mob_status = st.selectbox("2. สถานะการตรวจ", STATUS_OPTIONS, index=default_status_idx)
+                    with mc3:
+                        mob_note = st.text_input("หมายเหตุ (รายละเอียดเพิ่มเติม)", value=cur_note)
+                    with mc4:
+                        mob_inspector = st.text_input("3. ผู้ตรวจ (ระบบจำชื่อให้ครั้งถัดไป)", value=cur_insp)
+
+                    m_btn_col, m_save_status_col = st.columns([1.2, 1.8])
+                    with m_btn_col:
+                        mob_submit = st.form_submit_button(
+                            "💾 บันทึกผลการตรวจทันที",
+                            type="primary",
+                            use_container_width=True,
+                        )
+                    with m_save_status_col:
+                        render_save_status_badge(
+                            target_row_data["สถานะการตรวจ"],
+                            target_row_data["วันเดือนปี เวลา ที่ทำการตรวจสอบ"],
+                        )
+
+                    if mob_submit:
+                        current_time = now_thai().strftime("%d/%m/%Y %H:%M:%S")
+                        clean_insp = mob_inspector.strip()
+                        if clean_insp:
+                            st.session_state.last_inspector = clean_insp
+
+                        if mob_status == "ยังไม่ตรวจ":
+                            m_cond, m_stat, m_insp, m_time = "-", "ยังไม่ตรวจ", "-", "-"
+                        else:
+                            m_cond = mob_condition
+                            m_stat = mob_status
+                            m_insp = clean_insp if clean_insp else "-"
+                            m_time = current_time
+
+                        m_note = mob_note.strip() if mob_note.strip() else "-"
+
+                        ok = save_progress_to_supabase(
+                            asset_code=mob_target,
+                            condition=m_cond,
+                            status=m_stat,
+                            note=m_note,
+                            inspector=m_insp,
+                            timestamp=m_time,
+                            fiscal_year=current_year_key,
+                            agency_id=active_agency,
+                        )
+                        if ok:
+                            get_shared_data.clear()
+                            df_to_excel_bytes.clear()
+                            st.session_state.flash_success_msg = f"บันทึก {mob_target} ({m_cond}) เรียบร้อยแล้ว!"
+                            if st.session_state.continuous_scan:
+                                st.session_state.pending_clear_scan = True
+                                st.session_state.open_scanner = True
+                            else:
+                                st.session_state.open_scanner = False
+                            st.rerun()
+
+# =========================================================
 # ================= MENU 3: สร้าง QR Code =================
 # =========================================================
-elif selected_menu == m_qr:
+elif selected_menu == M_QR:
     st.subheader(f"🏷️ สร้างป้าย QR Code ({selected_fiscal_year})")
     qr_options_list = valid_df[target_column].tolist() if not valid_df.empty else []
 
@@ -1573,7 +1591,7 @@ elif selected_menu == m_qr:
 # =========================================================
 # ================= MENU 4: ส่งออก Excel =================
 # =========================================================
-elif selected_menu == m_export:
+elif selected_menu == M_EXPORT:
     st.subheader(f"📥 ส่งออกรายงานสรุปผลการตรวจสอบ ({selected_fiscal_year})")
     if valid_df.empty:
         st.info("ℹ️ ยังไม่มีข้อมูลสำหรับส่งออกรายงาน")
