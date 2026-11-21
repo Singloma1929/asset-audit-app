@@ -322,6 +322,46 @@ def authenticate_agency(agency_code: str, password: str) -> tuple[bool, str, str
     """ตรวจสอบสิทธิ์หน่วยงานและอัปเกรดรหัสผ่านเดิมเป็น Hash อัตโนมัติ"""
     code_in = agency_code.strip().lower()
     pass_in = password.strip()
+def change_agency_password(agency_code: str, old_password: str, new_password: str) -> tuple[bool, str]:
+    """ตรวจสอบรหัสผ่านเดิมและบันทึกรหัสผ่านใหม่แบบเข้ารหัสลง Supabase"""
+    code_in = agency_code.strip().lower()
+    old_in = old_password.strip()
+    new_in = new_password.strip()
+
+    # กรณีบัญชีผู้ดูแลหลักที่ตั้งค่าผ่าน Streamlit Secrets
+    if DEFAULT_ADMIN_CODE and DEFAULT_ADMIN_PASSWORD and code_in == DEFAULT_ADMIN_CODE:
+        return False, "⚠️ บัญชีผู้ดูแลหลักนี้ผูกกับ Streamlit Secrets กรุณาเปลี่ยนรหัสผ่านที่เมนู App settings > Secrets"
+
+    if not old_in or not new_in:
+        return False, "⚠️ กรุณากรอกรหัสผ่านเดิมและรหัสผ่านใหม่ให้ครบถ้วน"
+    if len(new_in) < 6:
+        return False, "⚠️ รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 6 ตัวอักษร"
+    if old_in == new_in:
+        return False, "⚠️ รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม"
+    if not supabase:
+        return False, "⚠️ ไม่ได้เชื่อมต่อฐานข้อมูล Supabase"
+
+    try:
+        res = (
+            supabase.table("agencies")
+            .select("password")
+            .eq("agency_code", code_in)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return False, "❌ ไม่พบข้อมูลหน่วยงานในฐานข้อมูล"
+
+        is_valid, _ = verify_password(old_in, res.data[0].get("password", ""))
+        if not is_valid:
+            return False, "❌ รหัสผ่านเดิมไม่ถูกต้อง"
+
+        supabase.table("agencies").update(
+            {"password": hash_password(new_in)}
+        ).eq("agency_code", code_in).execute()
+        return True, "✅ เปลี่ยนรหัสผ่านสำเร็จเรียบร้อย! (ใช้รหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไป)"
+    except Exception as e:
+        return False, f"⚠️ เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน: {e}"
 
     if not code_in or not pass_in:
         return False, "", "⚠️ กรุณากรอกรหัสหน่วยงานและรหัสผ่านให้ครบถ้วน"
