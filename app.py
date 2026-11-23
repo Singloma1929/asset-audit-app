@@ -28,10 +28,10 @@ THAI_TZ = timezone(timedelta(hours=7))
 HEADER_ROW_DEFAULT = 4
 MAX_UPLOAD_YEARS = 3  # จำกัดสูงสุด 3 ไฟล์ / 3 ปีงบประมาณต่อหน่วยงาน
 
-M_SEARCH = "🔍 ค้นหา / แก้ไข"
-M_AUDIT = "📷 ตรวจนับ / บันทึก"
+M_SEARCH = "🔍 ค้นหา / โหมดแก้ไขรายละเอียด"
+M_AUDIT = "📷 ตรวจครุภัณฑ์/บันทึกผลการตรวจสอบ/แก้ไขผลการตรวจ"
 M_QR = "🏷️ สร้าง QR Code"
-M_EXPORT = "📥 ส่งออก Excel"
+M_EXPORT = "📥 ส่งออกการส่งออกรายงานรวม(Excel)"
 
 CONDITION_OPTIONS = [
     "ปกติ",
